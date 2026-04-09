@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { RecoveryCodesDisplay } from "@/components/RecoveryCodesDisplay";
+import { MemoryEditor } from "@/components/settings/MemoryEditor";
 
 type ActiveSection = "email" | "password" | "recovery" | null;
 
@@ -46,7 +47,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-2xl space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
           <Link
@@ -56,6 +57,16 @@ export default function SettingsPage() {
             Back to chat
           </Link>
         </div>
+
+        <section className="rounded-lg border border-border bg-bg-secondary p-4">
+          <h2 className="text-sm font-medium text-text-primary">Memory</h2>
+          <p className="mt-0.5 text-sm text-text-secondary">
+            Facts and preferences Pollux remembers across all conversations.
+          </p>
+          <div className="mt-3">
+            <MemoryEditor />
+          </div>
+        </section>
 
         <section className="rounded-lg border border-border bg-bg-secondary p-4">
           <div className="flex items-center justify-between">

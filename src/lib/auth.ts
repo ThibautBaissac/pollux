@@ -1,7 +1,7 @@
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { authConfig, sessions } from "@/lib/db/schema";
+import { authConfig, sessions, recoveryCodes } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 const SALT_LENGTH = 16;
@@ -85,12 +85,7 @@ export async function destroySession(): Promise<void> {
 }
 
 export function isSetupComplete(): boolean {
-  const row = db
-    .select()
-    .from(authConfig)
-    .where(eq(authConfig.key, "password_hash"))
-    .get();
-  return !!row;
+  return !!getPasswordHash();
 }
 
 export function getPasswordHash(): string | null {
@@ -100,4 +95,80 @@ export function getPasswordHash(): string | null {
     .where(eq(authConfig.key, "password_hash"))
     .get();
   return row?.value ?? null;
+}
+
+export function getEmail(): string | null {
+  const row = db
+    .select()
+    .from(authConfig)
+    .where(eq(authConfig.key, "email"))
+    .get();
+  return row?.value ?? null;
+}
+
+export function setEmail(email: string): void {
+  db.insert(authConfig)
+    .values({ key: "email", value: email })
+    .onConflictDoUpdate({ target: authConfig.key, set: { value: email } })
+    .run();
+}
+
+export async function changePassword(newPassword: string): Promise<void> {
+  const hash = await hashPassword(newPassword);
+  db.insert(authConfig)
+    .values({ key: "password_hash", value: hash })
+    .onConflictDoUpdate({ target: authConfig.key, set: { value: hash } })
+    .run();
+}
+
+export async function generateRecoveryCodes(): Promise<{
+  codes: string[];
+  hashes: string[];
+}> {
+  const codes = Array.from({ length: 8 }, () => {
+    const raw = randomBytes(8).toString("hex");
+    return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12)}`;
+  });
+  const hashes = await Promise.all(codes.map((code) => hashPassword(code)));
+  return { codes, hashes };
+}
+
+export function storeRecoveryCodes(hashes: string[]): void {
+  const now = new Date();
+  db.transaction((tx) => {
+    tx.delete(recoveryCodes).run();
+    for (const hash of hashes) {
+      tx.insert(recoveryCodes)
+        .values({
+          id: randomBytes(16).toString("hex"),
+          codeHash: hash,
+          used: 0,
+          createdAt: now,
+        })
+        .run();
+    }
+  });
+}
+
+export async function verifyRecoveryCode(code: string): Promise<boolean> {
+  const unused = db
+    .select()
+    .from(recoveryCodes)
+    .where(eq(recoveryCodes.used, 0))
+    .all();
+
+  for (const row of unused) {
+    if (await verifyPassword(code, row.codeHash)) {
+      db.update(recoveryCodes)
+        .set({ used: 1 })
+        .where(eq(recoveryCodes.id, row.id))
+        .run();
+      return true;
+    }
+  }
+  return false;
+}
+
+export function destroyAllSessions(): void {
+  db.delete(sessions).run();
 }

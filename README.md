@@ -28,7 +28,7 @@ Start the dev server:
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). On first launch you'll be prompted to set a password. After that, you'll log in with that password on each session (7-day cookie).
+Open [http://localhost:3000](http://localhost:3000). On first launch you'll create your account with an email and password. You'll receive 8 one-time recovery codes -- save them somewhere safe, they're your only way to reset your password without external services.
 
 ## Production
 
@@ -37,13 +37,24 @@ npm run build
 npm start
 ```
 
+## Auth
+
+Single-user authentication with 7-day HTTP-only session cookies.
+
+- **Setup** (`/setup`) -- create your account with email + password; generates 8 recovery codes
+- **Login** (`/login`) -- password authentication
+- **Password reset** (`/recover`) -- use a recovery code to set a new password (no email service needed)
+- **Settings** (`/settings`) -- change email, change password, regenerate recovery codes, log out all sessions
+
+All password-changing operations (change password, recovery) invalidate existing sessions. Recovery codes are individually hashed with scrypt and each code works exactly once. If all 8 are used, regenerate from settings while logged in.
+
 ## Data
 
 All persistent data lives in `data/` (gitignored):
 
 | Path | Contents |
 |------|----------|
-| `data/pollux.db` | SQLite database (conversations, messages, auth, sessions) |
+| `data/pollux.db` | SQLite database (conversations, messages, auth, sessions, recovery codes) |
 | `data/memory/knowledge.md` | Knowledge base injected into every conversation's system prompt |
 
 The database is created automatically on first run. Migrations in `drizzle/` are applied at startup.
@@ -77,7 +88,7 @@ Extended thinking is enabled (adaptive mode). Sessions are persisted so follow-u
 | UI | React 19, Tailwind CSS 4 |
 | Database | SQLite (better-sqlite3, WAL mode) + Drizzle ORM |
 | Agent | @anthropic-ai/claude-agent-sdk |
-| Auth | scrypt password hashing, HTTP-only session cookies |
+| Auth | scrypt password hashing, HTTP-only session cookies, recovery codes |
 | Streaming | Server-Sent Events |
 | Markdown | react-markdown + remark-gfm + rehype-highlight |
 
@@ -88,9 +99,10 @@ src/
   app/
     api/chat/route.ts       # SSE streaming endpoint
     api/conversations/       # Conversation CRUD
-    api/auth/                # Login, logout, setup, status check
+    api/auth/                # Auth (login, setup, password/email change, recovery)
     chat/                    # Chat pages (new + [id])
-    login/, setup/           # Auth pages
+    login/, setup/, recover/ # Auth pages
+    settings/                # Account settings (email, password, recovery codes)
   components/
     chat/                    # ChatView, MessageList, MessageBubble, ChatInput
     sidebar/                 # Sidebar, ConversationItem
@@ -101,7 +113,7 @@ src/
   lib/
     agent.ts                 # SDK configuration and system prompt
     auth.ts                  # Password hashing and session lifecycle
-    auth-guard.ts            # requireAuth() middleware
+    auth-guard.ts            # requireAuth() and requirePasswordConfirmation() guards
     memory.ts                # Knowledge base read/write
     db/                      # Drizzle schema and SQLite connection
   types/

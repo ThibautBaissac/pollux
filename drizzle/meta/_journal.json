@@ -8,6 +8,13 @@
       "when": 1775731296577,
       "tag": "0000_rare_wolf_cub",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1775738281117,
+      "tag": "0001_overrated_iron_patriot",
+      "breakpoints": true
     }
   ]
 }

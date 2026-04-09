@@ -23,7 +23,7 @@ No test runner is configured.
 - **Styling:** Tailwind CSS 4 via PostCSS, `@tailwindcss/typography` for markdown prose
 - **Database:** SQLite (better-sqlite3, WAL mode) with Drizzle ORM
 - **Agent:** `@anthropic-ai/claude-agent-sdk` — model is `claude-sonnet-4-6`
-- **Auth:** Cookie-based sessions, scrypt password hashing, single-user
+- **Auth:** Cookie-based sessions, scrypt password hashing, single-user, recovery codes for offline password reset
 - **Streaming:** Server-Sent Events (SSE) via ReadableStream
 
 ## Architecture
@@ -47,7 +47,7 @@ No test runner is configured.
 
 ### Database
 
-Schema in `src/lib/db/schema.ts`. Four tables: `conversations`, `messages` (FK to conversations with cascade delete), `sessions`, `authConfig`. Migrations output to `drizzle/` and auto-run on startup. DB file at `data/pollux.db`.
+Schema in `src/lib/db/schema.ts`. Five tables: `conversations`, `messages` (FK to conversations with cascade delete), `sessions`, `authConfig`, `recoveryCodes`. Migrations output to `drizzle/` and auto-run on startup. DB file at `data/pollux.db`.
 
 ### Config
 
@@ -58,3 +58,7 @@ Schema in `src/lib/db/schema.ts`. Four tables: `conversations`, `messages` (FK t
 ### Auth flow
 
 `GET /` checks setup/auth status → redirects to `/setup` (first run), `/login`, or `/chat`. Sessions are 7-day HTTP-only cookies.
+
+Auth endpoints at `/api/auth/`: `check`, `setup`, `login`, `logout`, `logout-all`, `profile`, `change-password`, `change-email`, `recover`, `regenerate-recovery`.
+
+Setup requires email + password and generates 8 scrypt-hashed recovery codes (shown once). Recovery codes enable offline password reset from `/recover` without SMTP. Settings page at `/settings` for changing email, password, regenerating codes, and logging out all sessions.

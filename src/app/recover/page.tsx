@@ -2,51 +2,48 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { RecoveryCodesDisplay } from "@/components/RecoveryCodesDisplay";
+import Link from "next/link";
 
-export default function SetupPage() {
+export default function RecoverPage() {
   const router = useRouter();
-  const [step, setStep] = useState<"form" | "codes">("form");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
 
-    if (!email.includes("@")) {
-      setError("Please enter a valid email address");
+    if (!code.trim()) {
+      setError("Please enter a recovery code");
       return;
     }
-    if (password.length < 8) {
+    if (newPassword.length < 8) {
       setError("Password must be at least 8 characters");
       return;
     }
-    if (password !== confirmPassword) {
+    if (newPassword !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
 
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/setup", {
+      const res = await fetch("/api/auth/recover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ code: code.trim(), newPassword }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Setup failed");
+        setError(data.error || "Recovery failed");
         return;
       }
 
-      setRecoveryCodes(data.recoveryCodes);
-      setStep("codes");
+      router.push("/chat");
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -54,51 +51,30 @@ export default function SetupPage() {
     }
   }
 
-  if (step === "codes") {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="w-full max-w-sm space-y-6">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-text-primary">
-              Recovery Codes
-            </h1>
-            <p className="mt-2 text-sm text-text-secondary">
-              Each code can be used once to reset your password.
-            </p>
-          </div>
-
-          <RecoveryCodesDisplay
-            codes={recoveryCodes}
-            doneLabel="I've saved my recovery codes"
-            onDone={() => router.push("/chat")}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-text-primary">Pollux</h1>
+          <h1 className="text-2xl font-bold text-text-primary">
+            Reset Password
+          </h1>
           <p className="mt-2 text-sm text-text-secondary">
-            Create your account to get started
+            Enter one of your recovery codes and a new password
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm text-text-secondary">
-              Email
+            <label htmlFor="code" className="block text-sm text-text-secondary">
+              Recovery Code
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-              placeholder="you@example.com"
+              id="code"
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 font-mono text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+              placeholder="xxxx-xxxx-xxxx-xxxx"
               required
               autoFocus
             />
@@ -106,16 +82,16 @@ export default function SetupPage() {
 
           <div>
             <label
-              htmlFor="password"
+              htmlFor="newPassword"
               className="block text-sm text-text-secondary"
             >
-              Password
+              New Password
             </label>
             <input
-              id="password"
+              id="newPassword"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
               className="mt-1 w-full rounded-lg border border-border bg-bg-secondary px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
               placeholder="At least 8 characters"
               required
@@ -127,7 +103,7 @@ export default function SetupPage() {
               htmlFor="confirmPassword"
               className="block text-sm text-text-secondary"
             >
-              Confirm Password
+              Confirm New Password
             </label>
             <input
               id="confirmPassword"
@@ -147,9 +123,15 @@ export default function SetupPage() {
             disabled={loading}
             className="w-full rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {loading ? "Setting up..." : "Create Account"}
+            {loading ? "Resetting..." : "Reset Password"}
           </button>
         </form>
+
+        <p className="text-center text-sm text-text-muted">
+          <Link href="/login" className="text-accent hover:text-accent-hover">
+            Back to login
+          </Link>
+        </p>
       </div>
     </div>
   );

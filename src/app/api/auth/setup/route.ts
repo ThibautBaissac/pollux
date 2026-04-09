@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { authConfig } from "@/lib/db/schema";
-import { hashPassword, isSetupComplete, createSession } from "@/lib/auth";
+import {
+  isSetupComplete,
+  createSession,
+  setEmail,
+  changePassword,
+  generateRecoveryCodes,
+  storeRecoveryCodes,
+} from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   if (isSetupComplete()) {
@@ -12,7 +17,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { password } = body;
+  const { email, password } = body;
+
+  if (!email || typeof email !== "string" || !email.includes("@")) {
+    return NextResponse.json(
+      { error: "A valid email is required" },
+      { status: 400 },
+    );
+  }
 
   if (!password || typeof password !== "string" || password.length < 8) {
     return NextResponse.json(
@@ -21,13 +33,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const hash = await hashPassword(password);
+  await changePassword(password);
+  setEmail(email);
 
-  db.insert(authConfig)
-    .values({ key: "password_hash", value: hash })
-    .run();
+  const { codes, hashes } = await generateRecoveryCodes();
+  storeRecoveryCodes(hashes);
 
   await createSession();
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, recoveryCodes: codes });
 }

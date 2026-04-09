@@ -13,6 +13,7 @@ export interface UseChatReturn {
   status: StreamStatus;
   error: string | null;
   conversationId: string | null;
+  title: string | null;
   sendMessage: (text: string) => void;
   cancel: () => void;
   loadConversation: (id: string) => Promise<void>;
@@ -24,6 +25,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [title, setTitle] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadControllerRef = useRef<AbortController | null>(null);
   const loadRequestIdRef = useRef(0);
@@ -57,6 +59,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     invalidatePendingLoad();
     setMessages([]);
     setConversationId(null);
+    setTitle(null);
     setStatus("idle");
     setError(null);
   }, [invalidatePendingLoad]);
@@ -88,6 +91,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
         return;
       }
       setConversationId(data.id);
+      setTitle(data.title ?? null);
       setMessages(data.messages);
       setStatus("idle");
     } catch (err: unknown) {
@@ -320,6 +324,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     status,
     error,
     conversationId,
+    title,
     sendMessage,
     cancel,
     loadConversation,

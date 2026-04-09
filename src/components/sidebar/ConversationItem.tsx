@@ -46,28 +46,28 @@ export function ConversationItem({
     <div className="group relative">
       <Link
         href={`/chat/${conversation.id}`}
-        className={`flex items-center gap-2 px-3 py-2.5 text-sm ${
+        className={`flex items-center gap-2 rounded-lg my-0.5 px-3 py-1.5 text-sm transition-colors ${
           isActive
-            ? "bg-bg-tertiary text-text-primary"
-            : "text-text-secondary hover:bg-bg-hover"
+            ? "bg-bg-hover text-text-primary"
+            : "text-text-secondary hover:bg-bg-hover/60 hover:text-text-primary"
         }`}
       >
-        <span className="truncate flex-1">{conversation.title}</span>
+        <span className="truncate flex-1 text-sm">{conversation.title}</span>
       </Link>
 
-      <div className="absolute right-2 top-1/2 -translate-y-1/2" ref={menuRef}>
+      <div className="absolute right-3 top-1/2 -translate-y-1/2" ref={menuRef}>
         <button
           onClick={(e) => {
             e.preventDefault();
             setMenuOpen(!menuOpen);
           }}
-          className={`rounded p-1 text-text-muted hover:text-text-secondary hover:bg-bg-tertiary ${
+          className={`rounded-md p-1 text-text-muted transition-colors hover:text-text-secondary ${
             menuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           }`}
         >
           <svg
-            width="16"
-            height="16"
+            width="14"
+            height="14"
             viewBox="0 0 16 16"
             fill="currentColor"
           >
@@ -78,16 +78,16 @@ export function ConversationItem({
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-md border border-border bg-bg-secondary py-1 shadow-lg">
+          <div className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-xl border border-border bg-bg-tertiary py-1 shadow-xl">
             <button
               onClick={handleRename}
-              className="w-full px-3 py-1.5 text-left text-sm text-text-secondary hover:bg-bg-hover"
+              className="w-full px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
             >
               Rename
             </button>
             <button
               onClick={handleDelete}
-              className="w-full px-3 py-1.5 text-left text-sm text-danger hover:bg-bg-hover"
+              className="w-full px-3 py-2 text-left text-xs text-danger transition-colors hover:bg-bg-hover"
             >
               Delete
             </button>

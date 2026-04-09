@@ -44,7 +44,8 @@ export function useChat(): UseChatReturn {
 
   const sendMessage = useCallback(
     (text: string) => {
-      if (status !== "idle") return;
+      // Allow sending from both idle and error states
+      if (status === "streaming") return;
 
       setStatus("streaming");
       setError(null);
@@ -74,7 +75,16 @@ export function useChat(): UseChatReturn {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      // Track whether streaming has started (deltas received).
+      // If it hasn't, pre-stream failures should roll back optimistic messages.
+      let streamStarted = false;
       let hasNavigated = false;
+
+      function rollbackOptimistic() {
+        if (!streamStarted) {
+          setMessages((prev) => prev.slice(0, -2));
+        }
+      }
 
       (async () => {
         try {
@@ -87,6 +97,7 @@ export function useChat(): UseChatReturn {
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
+            rollbackOptimistic();
             setError(err.error || `Request failed (${res.status})`);
             setStatus("error");
             return;
@@ -128,6 +139,7 @@ export function useChat(): UseChatReturn {
           if (err instanceof Error && err.name === "AbortError") {
             setStatus("idle");
           } else {
+            rollbackOptimistic();
             setError(
               err instanceof Error ? err.message : "Connection failed",
             );
@@ -151,6 +163,7 @@ export function useChat(): UseChatReturn {
             break;
           }
           case "delta": {
+            streamStarted = true;
             const text = data.text as string;
             setMessages((prev) => {
               const updated = [...prev];
@@ -166,13 +179,13 @@ export function useChat(): UseChatReturn {
             break;
           }
           case "tool": {
+            streamStarted = true;
             const toolUse: ToolUse = { name: data.name as string };
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
               if (last && last.role === "assistant") {
                 const existing = last.toolUses ?? [];
-                // Only add if not already present
                 if (!existing.some((t) => t.name === toolUse.name)) {
                   updated[updated.length - 1] = {
                     ...last,
@@ -189,6 +202,7 @@ export function useChat(): UseChatReturn {
             break;
           }
           case "error": {
+            rollbackOptimistic();
             setError(data.message as string);
             setStatus("error");
             break;

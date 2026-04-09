@@ -41,3 +41,59 @@ export async function GET(
     })),
   });
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
+  const { id } = await params;
+
+  const { changes } = db
+    .delete(conversations)
+    .where(eq(conversations.id, id))
+    .run();
+
+  if (changes === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return new NextResponse(null, { status: 204 });
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
+  const { id } = await params;
+  const body = await request.json();
+  const { title } = body as { title?: string };
+
+  if (!title || typeof title !== "string" || !title.trim()) {
+    return NextResponse.json({ error: "Title is required" }, { status: 400 });
+  }
+
+  const trimmedTitle = title.trim().slice(0, 100);
+  const now = new Date();
+
+  const { changes } = db
+    .update(conversations)
+    .set({ title: trimmedTitle, updatedAt: now })
+    .where(eq(conversations.id, id))
+    .run();
+
+  if (changes === 0) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    id,
+    title: trimmedTitle,
+    updatedAt: now.toISOString(),
+  });
+}

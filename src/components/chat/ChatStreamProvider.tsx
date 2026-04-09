@@ -7,10 +7,12 @@ const ChatStreamContext = createContext<UseChatReturn | null>(null);
 
 export function ChatStreamProvider({
   children,
+  onConversationCreated,
 }: {
   children: React.ReactNode;
+  onConversationCreated?: () => void;
 }) {
-  const chat = useChat();
+  const chat = useChat({ onConversationCreated });
   return (
     <ChatStreamContext.Provider value={chat}>
       {children}

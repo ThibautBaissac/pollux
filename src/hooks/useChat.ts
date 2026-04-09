@@ -4,6 +4,10 @@ import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { Message, StreamStatus, ToolUse } from "@/types";
 
+export interface UseChatOptions {
+  onConversationCreated?: () => void;
+}
+
 export interface UseChatReturn {
   messages: Message[];
   status: StreamStatus;
@@ -15,7 +19,9 @@ export interface UseChatReturn {
   reset: () => void;
 }
 
-export function useChat(): UseChatReturn {
+export function useChat(options?: UseChatOptions): UseChatReturn {
+  const onConversationCreatedRef = useRef(options?.onConversationCreated);
+  onConversationCreatedRef.current = options?.onConversationCreated;
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +85,7 @@ export function useChat(): UseChatReturn {
       // If it hasn't, pre-stream failures should roll back optimistic messages.
       let streamStarted = false;
       let hasNavigated = false;
+      const isNewConversation = !conversationId;
 
       function rollbackOptimistic() {
         if (!streamStarted) {
@@ -159,6 +166,9 @@ export function useChat(): UseChatReturn {
             if (!hasNavigated) {
               router.replace(`/chat/${newConvId}`, { scroll: false });
               hasNavigated = true;
+              if (isNewConversation) {
+                onConversationCreatedRef.current?.();
+              }
             }
             break;
           }

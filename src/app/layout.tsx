@@ -12,8 +12,11 @@ export const metadata: Metadata = {
     title: "Pollux",
   },
   icons: {
-    icon: "/favicon.svg",
-    apple: "/icons/icon-192.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
   },
 };
 

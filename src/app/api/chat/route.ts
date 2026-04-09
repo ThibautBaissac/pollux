@@ -52,14 +52,19 @@ export async function POST(request: NextRequest) {
   }
 
   // Insert user message
+  const messageCreatedAt = new Date();
   db.insert(messages)
     .values({
       id: crypto.randomUUID(),
       conversationId: convId,
       role: "user",
       content: message,
-      createdAt: new Date(),
+      createdAt: messageCreatedAt,
     })
+    .run();
+  db.update(conversations)
+    .set({ updatedAt: messageCreatedAt })
+    .where(eq(conversations.id, convId))
     .run();
 
   const memoryContent = readMemory();
@@ -187,6 +192,16 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          if (request.signal.aborted) {
+            if (partialText.trim()) {
+              persistAssistantMessage(
+                partialText,
+                pendingToolUses.length > 0 ? pendingToolUses : null,
+              );
+            }
+            break;
+          }
+
           // Success — exit retry loop
           break;
         } catch (err: unknown) {
@@ -196,7 +211,10 @@ export async function POST(request: NextRequest) {
 
           if (isAbort) {
             if (partialText.trim()) {
-              persistAssistantMessage(partialText, null);
+              persistAssistantMessage(
+                partialText,
+                pendingToolUses.length > 0 ? pendingToolUses : null,
+              );
             }
             break;
           }
@@ -216,6 +234,12 @@ export async function POST(request: NextRequest) {
 
           const errorMessage =
             err instanceof Error ? err.message : "Unknown error";
+          if (partialText.trim()) {
+            persistAssistantMessage(
+              partialText,
+              pendingToolUses.length > 0 ? pendingToolUses : null,
+            );
+          }
           emit("error", { message: errorMessage });
           break;
         }

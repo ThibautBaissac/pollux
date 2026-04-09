@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Message, StreamStatus, ToolUse } from "@/types";
 
@@ -20,48 +20,98 @@ export interface UseChatReturn {
 }
 
 export function useChat(options?: UseChatOptions): UseChatReturn {
-  const onConversationCreatedRef = useRef(options?.onConversationCreated);
-  onConversationCreatedRef.current = options?.onConversationCreated;
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const loadControllerRef = useRef<AbortController | null>(null);
+  const loadRequestIdRef = useRef(0);
+  const onConversationCreatedRef = useRef(options?.onConversationCreated);
   const router = useRouter();
+
+  useEffect(() => {
+    onConversationCreatedRef.current = options?.onConversationCreated;
+  }, [options?.onConversationCreated]);
+
+  const invalidatePendingLoad = useCallback(() => {
+    loadRequestIdRef.current += 1;
+    loadControllerRef.current?.abort();
+    loadControllerRef.current = null;
+  }, []);
+
+  const pruneEmptyAssistant = useCallback(() => {
+    setMessages((prev) => {
+      const updated = [...prev];
+      const last = updated[updated.length - 1];
+      if (last?.role === "assistant" && !last.content.trim()) {
+        updated.pop();
+      }
+      return updated;
+    });
+  }, []);
 
   const reset = useCallback(() => {
     abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    invalidatePendingLoad();
     setMessages([]);
     setConversationId(null);
     setStatus("idle");
     setError(null);
-  }, []);
+  }, [invalidatePendingLoad]);
 
   const loadConversation = useCallback(async (id: string) => {
+    invalidatePendingLoad();
+    const requestId = loadRequestIdRef.current;
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
+
+    setConversationId(id);
+    setMessages([]);
     setStatus("loading");
     setError(null);
     try {
-      const res = await fetch(`/api/conversations/${id}`);
+      const res = await fetch(`/api/conversations/${id}`, {
+        signal: controller.signal,
+      });
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
       if (!res.ok) {
         setError(`Failed to load conversation (${res.status})`);
         setStatus("error");
         return;
       }
       const data = await res.json();
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
       setConversationId(data.id);
       setMessages(data.messages);
       setStatus("idle");
-    } catch {
+    } catch (err: unknown) {
+      if (
+        controller.signal.aborted ||
+        requestId !== loadRequestIdRef.current ||
+        (err instanceof Error && err.name === "AbortError")
+      ) {
+        return;
+      }
       setError("Connection failed");
       setStatus("error");
+    } finally {
+      if (loadControllerRef.current === controller) {
+        loadControllerRef.current = null;
+      }
     }
-  }, []);
+  }, [invalidatePendingLoad]);
 
   const sendMessage = useCallback(
     (text: string) => {
-      // Allow sending from both idle and error states
-      if (status === "streaming") return;
+      if (status === "streaming" || status === "loading") return;
 
+      invalidatePendingLoad();
       setStatus("streaming");
       setError(null);
 
@@ -90,16 +140,18 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      // Track whether streaming has started (deltas received).
-      // If it hasn't, pre-stream failures should roll back optimistic messages.
-      let streamStarted = false;
+      let requestAccepted = false;
       let hasNavigated = false;
       const isNewConversation = !conversationId;
 
-      function rollbackOptimistic() {
-        if (!streamStarted) {
-          setMessages((prev) => prev.slice(0, -2));
-        }
+      function rollbackOptimisticRequest() {
+        setMessages((prev) => prev.slice(0, -2));
+      }
+
+      function finalizeFailedStream(message: string) {
+        pruneEmptyAssistant();
+        setError(message);
+        setStatus("error");
       }
 
       (async () => {
@@ -113,11 +165,13 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            rollbackOptimistic();
+            rollbackOptimisticRequest();
             setError(err.error || `Request failed (${res.status})`);
             setStatus("error");
             return;
           }
+
+          requestAccepted = true;
 
           const reader = res.body!.getReader();
           const decoder = new TextDecoder();
@@ -149,17 +203,30 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
             processLines(buffer.split("\n"));
           }
 
-          // Set idle only if we haven't already moved to error/idle via events
+          pruneEmptyAssistant();
           setStatus((s) => (s === "streaming" ? "idle" : s));
         } catch (err: unknown) {
           if (err instanceof Error && err.name === "AbortError") {
+            if (requestAccepted) {
+              pruneEmptyAssistant();
+            } else {
+              rollbackOptimisticRequest();
+            }
             setStatus("idle");
           } else {
-            rollbackOptimistic();
-            setError(
-              err instanceof Error ? err.message : "Connection failed",
-            );
-            setStatus("error");
+            const message =
+              err instanceof Error ? err.message : "Connection failed";
+            if (requestAccepted) {
+              finalizeFailedStream(message);
+            } else {
+              rollbackOptimisticRequest();
+              setError(message);
+              setStatus("error");
+            }
+          }
+        } finally {
+          if (abortControllerRef.current === controller) {
+            abortControllerRef.current = null;
           }
         }
       })();
@@ -172,6 +239,13 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
           case "init": {
             const newConvId = data.conversationId as string;
             setConversationId(newConvId);
+            setMessages((prev) =>
+              prev.map((message) =>
+                message.conversationId
+                  ? message
+                  : { ...message, conversationId: newConvId },
+              ),
+            );
             if (!hasNavigated) {
               router.replace(`/chat/${newConvId}`, { scroll: false });
               hasNavigated = true;
@@ -182,7 +256,6 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
             break;
           }
           case "delta": {
-            streamStarted = true;
             const text = data.text as string;
             setMessages((prev) => {
               const updated = [...prev];
@@ -198,7 +271,6 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
             break;
           }
           case "tool": {
-            streamStarted = true;
             const toolUse: ToolUse = { name: data.name as string };
             setMessages((prev) => {
               const updated = [...prev];
@@ -217,23 +289,29 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
             break;
           }
           case "done": {
+            pruneEmptyAssistant();
             setStatus("idle");
             break;
           }
           case "error": {
-            rollbackOptimistic();
-            setError(data.message as string);
-            setStatus("error");
+            finalizeFailedStream(data.message as string);
             break;
           }
         }
       }
     },
-    [status, conversationId, router],
+    [
+      status,
+      conversationId,
+      router,
+      invalidatePendingLoad,
+      pruneEmptyAssistant,
+    ],
   );
 
   const cancel = useCallback(() => {
     abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     setStatus("idle");
   }, []);
 

@@ -10,10 +10,7 @@ export default function ConversationPage() {
   const { loadConversation, conversationId, status } = useChatStream();
 
   useEffect(() => {
-    // Only load if we're not already on this conversation.
-    // This prevents redundant fetching when router.replace transitions
-    // from /chat to /chat/[id] during an active stream.
-    if (conversationId !== id && status === "idle") {
+    if (conversationId !== id && status !== "streaming") {
       loadConversation(id);
     }
   }, [id, conversationId, status, loadConversation]);

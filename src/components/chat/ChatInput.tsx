@@ -8,10 +8,11 @@ export function ChatInput() {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isStreaming = status === "streaming";
+  const isBusy = status === "streaming" || status === "loading";
 
   function handleSubmit() {
     const trimmed = text.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isBusy) return;
     sendMessage(trimmed);
     setText("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -44,7 +45,7 @@ export function ChatInput() {
           onKeyDown={handleKeyDown}
           placeholder="Message Pollux..."
           rows={1}
-          disabled={isStreaming}
+          disabled={isBusy}
           className="flex-1 resize-none rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
         />
         {isStreaming ? (
@@ -57,7 +58,7 @@ export function ChatInput() {
         ) : (
           <button
             onClick={handleSubmit}
-            disabled={!text.trim()}
+            disabled={!text.trim() || isBusy}
             className="rounded-lg bg-accent px-4 py-2 font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
             Send

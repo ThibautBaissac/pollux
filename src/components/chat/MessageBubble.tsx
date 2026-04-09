@@ -4,10 +4,12 @@ import { memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { CodeBlock } from "./CodeBlock";
 import type { Message } from "@/types";
 
 const REMARK_PLUGINS = [remarkGfm];
 const REHYPE_PLUGINS = [rehypeHighlight];
+const MARKDOWN_COMPONENTS = { pre: CodeBlock };
 
 export const MessageBubble = memo(function MessageBubble({
   message,
@@ -30,6 +32,7 @@ export const MessageBubble = memo(function MessageBubble({
             <ReactMarkdown
               remarkPlugins={REMARK_PLUGINS}
               rehypePlugins={REHYPE_PLUGINS}
+              components={MARKDOWN_COMPONENTS}
             >
               {message.content}
             </ReactMarkdown>

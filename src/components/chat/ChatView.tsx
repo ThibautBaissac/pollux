@@ -6,7 +6,7 @@ import { ChatInput } from "./ChatInput";
 import { useChatStream } from "./ChatStreamProvider";
 
 export function ChatView() {
-  const { messages, error } = useChatStream();
+  const { messages, status, error } = useChatStream();
 
   return (
     <div className="flex h-full flex-col">
@@ -37,7 +37,7 @@ export function ChatView() {
           {error}
         </div>
       )}
-      <MessageList messages={messages} />
+      <MessageList messages={messages} loading={status === "loading"} />
       <ChatInput />
     </div>
   );

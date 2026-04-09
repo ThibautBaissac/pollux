@@ -38,14 +38,23 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
   }, []);
 
   const loadConversation = useCallback(async (id: string) => {
-    const res = await fetch(`/api/conversations/${id}`);
-    if (!res.ok) {
-      setError(`Failed to load conversation (${res.status})`);
-      return;
+    setStatus("loading");
+    setError(null);
+    try {
+      const res = await fetch(`/api/conversations/${id}`);
+      if (!res.ok) {
+        setError(`Failed to load conversation (${res.status})`);
+        setStatus("error");
+        return;
+      }
+      const data = await res.json();
+      setConversationId(data.id);
+      setMessages(data.messages);
+      setStatus("idle");
+    } catch {
+      setError("Connection failed");
+      setStatus("error");
     }
-    const data = await res.json();
-    setConversationId(data.id);
-    setMessages(data.messages);
   }, []);
 
   const sendMessage = useCallback(

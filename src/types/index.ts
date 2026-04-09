@@ -21,4 +21,4 @@ export interface ConversationWithMessages extends Conversation {
   messages: Message[];
 }
 
-export type StreamStatus = "idle" | "streaming" | "error";
+export type StreamStatus = "idle" | "loading" | "streaming" | "error";

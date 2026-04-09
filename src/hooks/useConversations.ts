@@ -5,11 +5,16 @@ import type { Conversation } from "@/types";
 
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/conversations");
-    if (res.ok) {
-      setConversations(await res.json());
+    try {
+      const res = await fetch("/api/conversations");
+      if (res.ok) {
+        setConversations(await res.json());
+      }
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -40,5 +45,5 @@ export function useConversations() {
     [],
   );
 
-  return { conversations, refresh, deleteConversation, renameConversation };
+  return { conversations, loading, refresh, deleteConversation, renameConversation };
 }

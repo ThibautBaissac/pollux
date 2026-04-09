@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useConversations } from "@/hooks/useConversations";
 import { ChatStreamProvider } from "@/components/chat/ChatStreamProvider";
@@ -12,8 +13,13 @@ export default function ChatLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { conversations, refresh, deleteConversation, renameConversation } =
-    useConversations();
+  const {
+    conversations,
+    loading,
+    refresh,
+    deleteConversation,
+    renameConversation,
+  } = useConversations();
 
   const activeId = pathname.startsWith("/chat/")
     ? pathname.slice("/chat/".length)
@@ -26,6 +32,17 @@ export default function ChatLayout({
     }
   }
 
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "N") {
+        e.preventDefault();
+        router.push("/chat");
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [router]);
+
   return (
     <ChatStreamProvider onConversationCreated={refresh}>
       <div
@@ -36,6 +53,7 @@ export default function ChatLayout({
           <Sidebar
             conversations={conversations}
             activeId={activeId}
+            loading={loading}
             onDelete={handleDelete}
             onRename={renameConversation}
           />

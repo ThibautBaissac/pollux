@@ -47,6 +47,10 @@ function formatToolLabel(tool: ToolUse): string {
       return input.command
         ? `Bash ${String(input.command).slice(0, 60)}`
         : tool.name;
+    case "Agent":
+      return input.agent_type || input.description
+        ? `Agent ${String(input.agent_type || input.description).slice(0, 40)}`
+        : tool.name;
     case "WebSearch":
       return input.query
         ? `WebSearch "${String(input.query).slice(0, 40)}"`

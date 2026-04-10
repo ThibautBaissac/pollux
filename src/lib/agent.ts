@@ -2,6 +2,34 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getCwd } from "@/lib/cwd-store";
 import { getMcpServers } from "@/lib/mcp-store";
 
+const ALLOWED_TOOLS: string[] = [
+  "WebSearch",
+  "WebFetch",
+  "Read",
+  "Write",
+  "Edit",
+  "Glob",
+  "Grep",
+  "Bash",
+];
+
+const AGENTS = {
+  researcher: {
+    description: "Delegate web research and information gathering tasks",
+    prompt:
+      "You are a research assistant. Find information, summarize findings, and report back concisely.",
+    tools: ["WebSearch", "WebFetch", "Read", "Glob", "Grep"],
+    maxTurns: 10,
+  },
+  coder: {
+    description: "Delegate code exploration, editing, and shell command tasks",
+    prompt:
+      "You are a coding assistant. Read, search, edit code and run commands. Report what you did and the results.",
+    tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+    maxTurns: 10,
+  },
+};
+
 export function buildSystemPrompt(
   memoryContent: string,
   cwd: string,
@@ -32,6 +60,12 @@ Use relative paths when working within this directory.
 - Prefer non-interactive commands — no vim, less, top, or interactive prompts
 - Keep output concise — pipe through head/tail/grep when full output is not needed
 
+### Subagents
+You can delegate tasks to specialized subagents that work in parallel:
+- researcher: Web research and information gathering
+- coder: Code exploration, editing, and running shell commands
+Use subagents when a task benefits from focused, parallel work.
+
 ### Filesystem guidelines
 - NEVER read or output contents of .env, .env.*, *.pem, or *.key files
 - Always Read a file before using Edit on it
@@ -61,16 +95,8 @@ export function startAgent(params: {
       model: params.model,
       systemPrompt: buildSystemPrompt(params.memoryContent, cwd),
       resume: params.sdkSessionId,
-      allowedTools: [
-        "WebSearch",
-        "WebFetch",
-        "Read",
-        "Write",
-        "Edit",
-        "Glob",
-        "Grep",
-        "Bash",
-      ],
+      allowedTools: [...ALLOWED_TOOLS],
+      agents: AGENTS,
       permissionMode: "dontAsk",
       includePartialMessages: true,
       abortController: params.abortController,

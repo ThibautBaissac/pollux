@@ -5,8 +5,9 @@ import {
   mkdirSync,
 } from "fs";
 import { join } from "path";
+import { dream } from "./dream-config";
 
-const MEMORY_DIR = join(process.cwd(), "data", "memory");
+export const MEMORY_DIR = join(process.cwd(), "data", "memory");
 
 export type MemoryFile = "profile" | "knowledge";
 
@@ -48,7 +49,6 @@ export function readMemoryFile(file: MemoryFile): string {
 }
 
 export function writeMemoryFile(file: MemoryFile, content: string): void {
-  mkdirSync(MEMORY_DIR, { recursive: true });
   writeFileSync(PATHS[file], content, "utf-8");
 }
 
@@ -56,14 +56,12 @@ export function writeMemoryFile(file: MemoryFile, content: string): void {
 // Combined memory for system prompt injection
 // ---------------------------------------------------------------------------
 
-const MAX_RECENT_HISTORY = 50;
-
 export function readMemory(): string {
   const profile = readMemoryFile("profile");
   const knowledge = readMemoryFile("knowledge");
 
   const dreamCursor = getLastDreamCursor();
-  const recent = readHistorySince(dreamCursor).slice(-MAX_RECENT_HISTORY);
+  const recent = readHistorySince(dreamCursor).slice(-dream.recentHistoryLimit);
   const recentSection =
     recent.length > 0
       ? `\n\n## Recent History\n${recent.map((e) => `- [${e.timestamp}] ${e.content}`).join("\n")}`
@@ -78,7 +76,7 @@ export function writeMemory(content: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// history.jsonl operations (consumed by Phase 2 summarizer + Phase 3 Dream)
+// history.jsonl — appended by Phase 1, consumed by Phase 2
 // ---------------------------------------------------------------------------
 
 const HISTORY_PATH = join(MEMORY_DIR, "history.jsonl");
@@ -94,8 +92,6 @@ export interface HistoryEntry {
 export function appendHistory(
   entry: Omit<HistoryEntry, "cursor">,
 ): number {
-  mkdirSync(MEMORY_DIR, { recursive: true });
-
   let nextCursor = 1;
   try {
     const data = readFileSync(HISTORY_PATH, "utf-8").trim();
@@ -136,4 +132,25 @@ export function getLastDreamCursor(): number {
 
 export function setLastDreamCursor(cursor: number): void {
   writeFileSync(CURSOR_PATH, String(cursor), "utf-8");
+}
+
+/** Remove processed entries from history.jsonl to keep it bounded. */
+export function compactHistory(cursor: number): void {
+  try {
+    const data = readFileSync(HISTORY_PATH, "utf-8").trim();
+    if (!data) return;
+    const remaining = data
+      .split("\n")
+      .filter((line) => {
+        const entry = JSON.parse(line) as HistoryEntry;
+        return entry.cursor > cursor;
+      });
+    writeFileSync(
+      HISTORY_PATH,
+      remaining.length > 0 ? remaining.join("\n") + "\n" : "",
+      "utf-8",
+    );
+  } catch {
+    // File doesn't exist or is corrupt — nothing to compact
+  }
 }

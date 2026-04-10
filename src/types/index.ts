@@ -23,3 +23,19 @@ export interface ConversationWithMessages extends Conversation {
 }
 
 export type StreamStatus = "idle" | "loading" | "streaming" | "error";
+
+export interface Reminder {
+  id: string;
+  name: string;
+  message: string;
+  scheduleType: "once" | "recurring";
+  cronExpr: string | null;
+  scheduledAt: string | null;
+  nextRunAt: string;
+  lastRunAt: string | null;
+  timezone: string;
+  conversationId: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

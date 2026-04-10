@@ -15,6 +15,10 @@ const MIGRATIONS = [
     new URL("../../drizzle/0001_overrated_iron_patriot.sql", import.meta.url),
     "utf-8",
   ),
+  readFileSync(
+    new URL("../../drizzle/0002_motionless_microbe.sql", import.meta.url),
+    "utf-8",
+  ),
 ];
 
 export interface TestDbContext {

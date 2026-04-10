@@ -15,6 +15,13 @@
       "when": 1775738281117,
       "tag": "0001_overrated_iron_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1775826598190,
+      "tag": "0002_motionless_microbe",
+      "breakpoints": true
     }
   ]
 }

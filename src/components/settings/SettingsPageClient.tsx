@@ -7,6 +7,7 @@ import { MemoryEditor } from "@/components/settings/MemoryEditor";
 import { ModelSelect } from "@/components/settings/ModelSelect";
 import { WorkingDirectoryInput } from "@/components/settings/WorkingDirectoryInput";
 import { McpServersEditor } from "@/components/settings/McpServersEditor";
+import { RemindersManager } from "@/components/settings/RemindersManager";
 import { EmailForm } from "@/components/settings/EmailForm";
 import { PasswordForm } from "@/components/settings/PasswordForm";
 import { RecoveryRegenerateForm } from "@/components/settings/RecoveryRegenerateForm";
@@ -67,6 +68,16 @@ export function SettingsPageClient({
           </p>
           <div className="mt-3">
             <WorkingDirectoryInput />
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-border bg-bg-secondary p-4">
+          <h2 className="text-sm font-medium text-text-primary">Reminders</h2>
+          <p className="mt-0.5 text-sm text-text-secondary">
+            Scheduled reminders that deliver messages to conversations when due.
+          </p>
+          <div className="mt-3">
+            <RemindersManager />
           </div>
         </section>
 

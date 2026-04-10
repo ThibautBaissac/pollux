@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getCwd } from "@/lib/cwd-store";
 import { getMcpServers } from "@/lib/mcp-store";
+import { reminderMcpServer } from "@/lib/reminder-tool";
 
 const ALLOWED_TOOLS: string[] = [
   "WebSearch",
@@ -71,6 +72,13 @@ Use subagents when a task benefits from focused, parallel work.
 - Always Read a file before using Edit on it
 - Prefer Edit over Write for modifying existing files
 
+### Reminders
+- reminder: Create, list, or delete scheduled reminders for the user
+  - add: requires name, message, scheduleType ("once" or "recurring"), conversationId (use the current conversation ID), and either cronExpr (5-field cron, e.g. "0 15 * * 5" = Friday 3 PM) or scheduledAt (ISO 8601 datetime). Optional: timezone (IANA, e.g. "America/New_York")
+  - list: show all reminders with schedule, status, and next run time
+  - remove: delete a reminder by reminderId
+When the user asks you to set a reminder, use this tool. The conversationId is the ID of the current conversation — it will be provided in the user message context.
+
 Important facts from conversations are automatically extracted and
 persisted after each conversation. Never suggest the user save things
 manually, update their profile, or edit settings — it is handled for them.
@@ -86,8 +94,11 @@ export function startAgent(params: {
   abortController: AbortController;
 }) {
   const cwd = getCwd();
-  const mcpServers = getMcpServers();
-  const hasMcp = Object.keys(mcpServers).length > 0;
+  const userMcpServers = getMcpServers();
+  const mcpServers = {
+    "pollux-reminders": reminderMcpServer,
+    ...userMcpServers,
+  };
 
   return query({
     prompt: params.userMessage,
@@ -104,7 +115,7 @@ export function startAgent(params: {
       thinking: { type: "adaptive" },
       cwd,
       persistSession: true,
-      ...(hasMcp && { mcpServers }),
+      mcpServers,
     },
   });
 }

@@ -11,7 +11,6 @@ user's knowledge base (provided below) and use tools when helpful.
 - WebSearch: Search the web for current information
 - WebFetch: Fetch and read web page content
 
-## Knowledge base
 ${memoryContent}
 
 Current date: ${new Date().toISOString().split("T")[0]}`;

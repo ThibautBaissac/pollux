@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guard";
-import { readMemory, writeMemory } from "@/lib/memory";
+import { readMemoryFile, writeMemoryFile, type MemoryFile } from "@/lib/memory";
 
-export async function GET() {
+function parseFileParam(raw: string | null | undefined): MemoryFile {
+  if (raw === "profile" || raw === "knowledge") return raw;
+  return "knowledge";
+}
+
+export async function GET(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const content = readMemory();
+  const file = parseFileParam(request.nextUrl.searchParams.get("file"));
+  const content = readMemoryFile(file);
   return NextResponse.json({ content });
 }
 
@@ -15,7 +21,7 @@ export async function PUT(request: NextRequest) {
   if (authError) return authError;
 
   const body = await request.json();
-  const { content } = body;
+  const { content, file: rawFile } = body;
 
   if (typeof content !== "string") {
     return NextResponse.json(
@@ -24,8 +30,10 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  const file = parseFileParam(rawFile);
+
   try {
-    writeMemory(content);
+    writeMemoryFile(file, content);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

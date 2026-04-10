@@ -1,9 +1,33 @@
 "use client";
 
-import Link from "next/link";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
 import { useChatStream } from "./ChatStreamProvider";
+import { useSidebar } from "@/components/sidebar/SidebarContext";
+
+function MenuButton({ className }: { className?: string }) {
+  const { toggle } = useSidebar();
+  return (
+    <button
+      onClick={toggle}
+      className={`text-text-secondary hover:text-text-primary ${className ?? ""}`}
+      aria-label="Toggle sidebar"
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3 12h18M3 6h18M3 18h18" />
+      </svg>
+    </button>
+  );
+}
 
 export function ChatView() {
   const { messages, status, error, title } = useChatStream();
@@ -22,11 +46,7 @@ export function ChatView() {
 
       {/* Mobile header */}
       <div className="flex items-center gap-2 p-3 md:hidden">
-        <Link href="/chat" className="text-text-secondary hover:text-text-primary">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </Link>
+        <MenuButton />
         <span className="truncate text-sm font-medium text-text-primary">
           {title ?? "Pollux"}
         </span>

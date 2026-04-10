@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { ConversationItem } from "./ConversationItem";
+import { useSidebar } from "./SidebarContext";
 import type { Conversation } from "@/types";
 
 export function Sidebar({
@@ -63,6 +64,7 @@ export function Sidebar({
     };
   }, [searchQuery]);
 
+  const { close } = useSidebar();
   const isSearching = searchQuery.trim().length > 0;
   const displayList = isSearching ? (searchResults ?? []) : conversations;
   const showLoading = isSearching ? searchLoading : loading;
@@ -91,7 +93,26 @@ export function Sidebar({
           />
           <circle cx="16" cy="16" r="2.2" fill="#dbeafe" opacity="0.9" />
         </svg>
-        <span className="text-base font-semibold text-text-primary">Pollux</span>
+        <span className="flex-1 text-base font-semibold text-text-primary">Pollux</span>
+        {/* Mobile close button */}
+        <button
+          onClick={close}
+          className="text-text-secondary hover:text-text-primary md:hidden"
+          aria-label="Close sidebar"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
       {/* New chat button */}

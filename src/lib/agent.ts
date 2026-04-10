@@ -19,13 +19,14 @@ Current date: ${new Date().toISOString().split("T")[0]}`;
 export function startAgent(params: {
   userMessage: string;
   memoryContent: string;
+  model: string;
   sdkSessionId?: string;
   abortController: AbortController;
 }) {
   return query({
     prompt: params.userMessage,
     options: {
-      model: "claude-sonnet-4-6",
+      model: params.model,
       systemPrompt: buildSystemPrompt(params.memoryContent),
       resume: params.sdkSessionId,
       allowedTools: ["WebSearch", "WebFetch"],

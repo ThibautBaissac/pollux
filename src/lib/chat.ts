@@ -3,6 +3,7 @@ import { conversations, messages } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { readMemory } from "@/lib/memory";
 import { startAgent } from "@/lib/agent";
+import { getModel } from "@/lib/model-store";
 import type { ToolUse } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -115,6 +116,7 @@ export interface ChatStreamParams {
 export function createChatStream(params: ChatStreamParams): ReadableStream {
   const { convId, message, title, abortSignal } = params;
   const memoryContent = readMemory();
+  const model = getModel();
 
   const controller = new AbortController();
   abortSignal.addEventListener("abort", () => controller.abort(), {
@@ -146,6 +148,7 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
           const agentStream = startAgent({
             userMessage: message,
             memoryContent,
+            model,
             sdkSessionId: currentSessionId,
             abortController: controller,
           });

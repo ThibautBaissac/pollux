@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { RecoveryCodesDisplay } from "@/components/RecoveryCodesDisplay";
 import { MemoryEditor } from "@/components/settings/MemoryEditor";
+import { ModelSelect } from "@/components/settings/ModelSelect";
 import { EmailForm } from "@/components/settings/EmailForm";
 import { PasswordForm } from "@/components/settings/PasswordForm";
 import { RecoveryRegenerateForm } from "@/components/settings/RecoveryRegenerateForm";
@@ -44,6 +45,16 @@ export function SettingsPageClient({
           </p>
           <div className="mt-3">
             <MemoryEditor />
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-border bg-bg-secondary p-4">
+          <h2 className="text-sm font-medium text-text-primary">Model</h2>
+          <p className="mt-0.5 text-sm text-text-secondary">
+            Choose which Claude model Pollux uses for conversations.
+          </p>
+          <div className="mt-3">
+            <ModelSelect />
           </div>
         </section>
 

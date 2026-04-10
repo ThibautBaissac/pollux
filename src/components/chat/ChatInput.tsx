@@ -1,14 +1,28 @@
 "use client";
 
-import { useState, useRef, type KeyboardEvent } from "react";
+import { useState, useRef, useEffect, type KeyboardEvent } from "react";
 import { useChatStream } from "./ChatStreamProvider";
+import { AVAILABLE_MODELS } from "@/lib/models";
 
 export function ChatInput() {
   const { sendMessage, cancel, status } = useChatStream();
   const [text, setText] = useState("");
+  const [modelLabel, setModelLabel] = useState("Sonnet 4.6");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isStreaming = status === "streaming";
   const isBusy = status === "streaming" || status === "loading";
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetch("/api/settings/model", { signal: ac.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const label = AVAILABLE_MODELS.find((m) => m.id === data?.model)?.label;
+        if (label) setModelLabel(label);
+      })
+      .catch(() => {});
+    return () => ac.abort();
+  }, []);
 
   function handleSubmit() {
     const trimmed = text.trim();
@@ -56,7 +70,7 @@ export function ChatInput() {
                 <circle cx="12" cy="12" r="3" />
                 <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
               </svg>
-              Sonnet 4.6
+              {modelLabel}
             </span>
 
             {/* Send / Stop button */}

@@ -27,6 +27,7 @@ export default defineConfig({
         "src/lib/rate-limit.ts",
         "src/lib/rate-limit-config.ts",
         "src/lib/request-guards.ts",
+        "src/lib/cwd-store.ts",
       ],
     },
   },

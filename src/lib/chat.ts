@@ -187,6 +187,10 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
                 .filter((block) => block.type === "tool_use")
                 .map((block) => ({
                   name: "name" in block ? (block.name as string) : "unknown",
+                  input:
+                    "input" in block && block.input
+                      ? (block.input as Record<string, unknown>)
+                      : undefined,
                 }));
 
               if (fullText) {

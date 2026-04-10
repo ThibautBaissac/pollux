@@ -9,6 +9,7 @@ export interface Message {
 
 export interface ToolUse {
   name: string;
+  input?: Record<string, unknown>;
 }
 
 export interface Conversation {

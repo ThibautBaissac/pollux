@@ -20,7 +20,27 @@ export function Sidebar({
   return (
     <div className="flex h-full flex-col bg-bg-secondary">
       {/* Brand */}
-      <div className="px-4 pt-5 pb-3">
+      <div className="flex items-center gap-2.5 px-4 pt-5 pb-3">
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 32 32"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="shrink-0"
+        >
+          <defs>
+            <linearGradient id="pollux-star" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#60a5fa" />
+              <stop offset="100%" stopColor="#3b82f6" />
+            </linearGradient>
+          </defs>
+          <polygon
+            points="16,3 18.5,13 29,16 18.5,19 16,29 13.5,19 3,16 13.5,13"
+            fill="url(#pollux-star)"
+          />
+          <circle cx="16" cy="16" r="2.2" fill="#dbeafe" opacity="0.9" />
+        </svg>
         <span className="text-base font-semibold text-text-primary">Pollux</span>
       </div>
 

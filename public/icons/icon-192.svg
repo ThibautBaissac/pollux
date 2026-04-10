@@ -1,5 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="40" fill="#0f0f0f"/>
-  <circle cx="96" cy="96" r="72" fill="#1a1a1a"/>
-  <text x="96" y="96" font-family="system-ui, -apple-system, sans-serif" font-size="88" font-weight="bold" fill="#3b82f6" text-anchor="middle" dominant-baseline="central">P</text>
+  <rect width="192" height="192" rx="36" fill="#0f0f0f"/>
+  <defs>
+    <linearGradient id="s" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <radialGradient id="g" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="96" cy="96" r="66" fill="url(#g)"/>
+  <polygon points="96,18 111,78 174,96 111,114 96,174 81,114 18,96 81,78" fill="url(#s)"/>
+  <circle cx="96" cy="96" r="13" fill="#dbeafe" opacity="0.9"/>
 </svg>

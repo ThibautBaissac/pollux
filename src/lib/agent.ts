@@ -23,6 +23,14 @@ export function buildSystemPrompt(
 Working directory: ${cwd}
 Use relative paths when working within this directory.
 
+### Shell
+- Bash: Run shell commands in the working directory
+
+### Shell guidelines
+- Avoid destructive commands (rm -rf /, shutdown, reboot, mkfs, dd)
+- Prefer non-interactive commands — no vim, less, top, or interactive prompts
+- Keep output concise — pipe through head/tail/grep when full output is not needed
+
 ### Filesystem guidelines
 - NEVER read or output contents of .env, .env.*, *.pem, or *.key files
 - Always Read a file before using Edit on it
@@ -58,6 +66,7 @@ export function startAgent(params: {
         "Edit",
         "Glob",
         "Grep",
+        "Bash",
       ],
       permissionMode: "dontAsk",
       includePartialMessages: true,

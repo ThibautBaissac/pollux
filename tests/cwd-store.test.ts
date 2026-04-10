@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createTestDb, type TestDbContext } from "./helpers/test-db";
@@ -63,7 +63,7 @@ describe("cwd-store", () => {
   it("setCwd rejects file path (not directory)", async () => {
     const { setCwd } = await loadCwdStore();
     const filePath = join(tempDir, "file.txt");
-    require("fs").writeFileSync(filePath, "hello");
+    writeFileSync(filePath, "hello");
 
     expect(() => setCwd(filePath)).toThrow("Path is not a directory");
   });

@@ -43,6 +43,10 @@ function formatToolLabel(tool: ToolUse): string {
       return input.pattern
         ? `Grep "${String(input.pattern)}"`
         : tool.name;
+    case "Bash":
+      return input.command
+        ? `Bash ${String(input.command).slice(0, 60)}`
+        : tool.name;
     case "WebSearch":
       return input.query
         ? `WebSearch "${String(input.query).slice(0, 40)}"`

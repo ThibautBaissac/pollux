@@ -14,15 +14,6 @@ Comparison of user-facing features present in [nanobot](../../../ThibautBaissac/
 |---------|-------------|-------------|--------|
 | **Memory version history & rollback** | UI to browse git-committed memory snapshots and restore a previous version (`/dream-log`, `/dream-restore`) | **Med** — safety net when Dream overwrites something important; currently requires CLI git | **M** — git log/diff/checkout plumbing exists in `git-memory.ts`; needs a settings UI panel + API route |
 
-## Agent Capabilities
-
-| Feature | What it does | User Impact | Effort |
-|---------|-------------|-------------|--------|
-| **Code / shell execution tool** | Agent can run shell commands (with timeout, blocked patterns, output truncation) to answer questions or automate tasks | **High** — transforms Pollux from a chat-only assistant to a capable local agent | **L** — security model needed (sandboxing, command blocklist, output limits); SDK tool registration |
-| **Filesystem tools** | Agent can read, write, edit, and list local files on behalf of the user | **High** — enables "edit my config", "read this log", "summarize this file" workflows | **L** — needs path restriction, permission model, and careful security boundaries |
-| **Subagent spawning** | Main agent can spin up focused sub-agents for parallel work, each reporting back to the parent | **Low** — power-user feature; most solo-user queries are single-threaded | **L** — requires task tracking, cancellation, and parallel SDK session management |
-| **MCP server integration** | Connect external Model Context Protocol tool servers (stdio or HTTP); tools auto-discovered and callable by the agent | **Med** — opens Pollux to any MCP-compatible tool ecosystem (databases, APIs, custom tools) | **M** — SDK supports MCP natively; needs config UI + server lifecycle management |
-
 ## Automation
 
 | Feature | What it does | User Impact | Effort |

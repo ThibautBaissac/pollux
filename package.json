@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:migrate": "node scripts/migrate.mjs",
+    "predev": "npm run db:migrate",
+    "prestart": "npm run db:migrate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

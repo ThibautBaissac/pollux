@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth-guard";
 import { db } from "@/lib/db";
 import { conversations, messages } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 export async function GET(
   _request: NextRequest,
@@ -43,9 +44,12 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestError = requireTrustedRequest(request);
+  if (requestError) return requestError;
+
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -67,12 +71,17 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestError = requireTrustedRequest(request);
+  if (requestError) return requestError;
+
   const authError = await requireAuth();
   if (authError) return authError;
 
   const { id } = await params;
-  const body = await request.json();
-  const { title } = body as { title?: string };
+  const parsed = await readJsonObject(request);
+  if (parsed.response) return parsed.response;
+
+  const { title } = parsed.data;
 
   if (!title || typeof title !== "string" || !title.trim()) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });

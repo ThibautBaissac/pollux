@@ -1,12 +1,21 @@
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import {
+  scrypt,
+  randomBytes,
+  timingSafeEqual,
+  createHash,
+} from "crypto";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { authConfig, sessions, recoveryCodes } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 
 const SALT_LENGTH = 16;
 const KEY_LENGTH = 64;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+function hashSessionToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(SALT_LENGTH);
@@ -24,8 +33,16 @@ export async function verifyPassword(
   stored: string,
 ): Promise<boolean> {
   const [saltHex, hashHex] = stored.split(":");
+  if (!saltHex || !hashHex) {
+    return false;
+  }
+
   const salt = Buffer.from(saltHex, "hex");
   const storedHash = Buffer.from(hashHex, "hex");
+  if (salt.length === 0 || storedHash.length !== KEY_LENGTH) {
+    return false;
+  }
+
   const hash = await new Promise<Buffer>((resolve, reject) => {
     scrypt(password, salt, KEY_LENGTH, (err, derivedKey) => {
       if (err) reject(err);
@@ -37,11 +54,12 @@ export async function verifyPassword(
 
 export async function createSession(): Promise<string> {
   const token = randomBytes(32).toString("hex");
+  const tokenHash = hashSessionToken(token);
   const now = new Date();
   const expires = new Date(now.getTime() + SESSION_MAX_AGE * 1000);
 
   db.insert(sessions)
-    .values({ token, createdAt: now, expiresAt: expires })
+    .values({ token: tokenHash, createdAt: now, expiresAt: expires })
     .run();
 
   const cookieStore = await cookies();
@@ -61,17 +79,28 @@ export async function validateSession(): Promise<boolean> {
   const token = cookieStore.get("session")?.value;
   if (!token) return false;
 
+  const tokenHash = hashSessionToken(token);
   const session = db
     .select()
     .from(sessions)
-    .where(eq(sessions.token, token))
+    .where(or(eq(sessions.token, tokenHash), eq(sessions.token, token)))
     .get();
 
   if (!session) return false;
   if (session.expiresAt < new Date()) {
-    db.delete(sessions).where(eq(sessions.token, token)).run();
+    db.delete(sessions)
+      .where(or(eq(sessions.token, tokenHash), eq(sessions.token, token)))
+      .run();
     return false;
   }
+
+  if (session.token !== tokenHash) {
+    db.update(sessions)
+      .set({ token: tokenHash })
+      .where(eq(sessions.token, session.token))
+      .run();
+  }
+
   return true;
 }
 
@@ -79,7 +108,10 @@ export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get("session")?.value;
   if (token) {
-    db.delete(sessions).where(eq(sessions.token, token)).run();
+    const tokenHash = hashSessionToken(token);
+    db.delete(sessions)
+      .where(or(eq(sessions.token, tokenHash), eq(sessions.token, token)))
+      .run();
   }
   cookieStore.delete("session");
 }
@@ -159,11 +191,17 @@ export async function verifyRecoveryCode(code: string): Promise<boolean> {
 
   for (const row of unused) {
     if (await verifyPassword(code, row.codeHash)) {
-      db.update(recoveryCodes)
+      const { changes } = db
+        .update(recoveryCodes)
         .set({ used: 1 })
-        .where(eq(recoveryCodes.id, row.id))
+        .where(
+          and(eq(recoveryCodes.id, row.id), eq(recoveryCodes.used, 0)),
+        )
         .run();
-      return true;
+
+      if (changes === 1) {
+        return true;
+      }
     }
   }
   return false;

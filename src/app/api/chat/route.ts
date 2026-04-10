@@ -5,46 +5,90 @@ import { conversations, messages } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { readMemory } from "@/lib/memory";
 import { startAgent } from "@/lib/agent";
+import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 import type { ToolUse } from "@/types";
 
 export async function POST(request: NextRequest) {
+  const requestError = requireTrustedRequest(request);
+  if (requestError) return requestError;
+
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const body = await request.json();
-  const { conversationId: inputConvId, message } = body as {
-    conversationId?: string;
-    message?: string;
-  };
+  const parsed = await readJsonObject(request);
+  if (parsed.response) return parsed.response;
 
-  if (!message || typeof message !== "string" || !message.trim()) {
+  const rawConversationId = parsed.data.conversationId;
+  const rawMessage = parsed.data.message;
+  const rawCreateIfMissing = parsed.data.createIfMissing;
+
+  if (
+    rawConversationId !== undefined &&
+    typeof rawConversationId !== "string"
+  ) {
+    return NextResponse.json(
+      { error: "Conversation ID must be a string" },
+      { status: 400 },
+    );
+  }
+
+  if (
+    rawCreateIfMissing !== undefined &&
+    typeof rawCreateIfMissing !== "boolean"
+  ) {
+    return NextResponse.json(
+      { error: "createIfMissing must be a boolean" },
+      { status: 400 },
+    );
+  }
+
+  if (typeof rawMessage !== "string" || !rawMessage.trim()) {
     return NextResponse.json({ error: "Message is required" }, { status: 400 });
   }
 
+  const inputConvId = rawConversationId;
+  const message = rawMessage;
+  const shouldCreateIfMissing = rawCreateIfMissing === true;
   // Load or create conversation
-  let convId = inputConvId;
+  let convId: string;
   let sdkSessionId: string | undefined;
+  const conversationTitle = message.slice(0, 60);
 
-  if (convId) {
+  if (inputConvId) {
+    convId = inputConvId;
     const conv = db
       .select()
       .from(conversations)
       .where(eq(conversations.id, convId))
       .get();
-    if (!conv) {
+
+    if (!conv && !shouldCreateIfMissing) {
       return NextResponse.json(
         { error: "Conversation not found" },
         { status: 404 },
       );
     }
-    sdkSessionId = conv.sdkSessionId ?? undefined;
+
+    if (conv) {
+      sdkSessionId = conv.sdkSessionId ?? undefined;
+    } else {
+      const now = new Date();
+      db.insert(conversations)
+        .values({
+          id: convId,
+          title: conversationTitle,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
   } else {
     convId = crypto.randomUUID();
     const now = new Date();
     db.insert(conversations)
       .values({
         id: convId,
-        title: message.slice(0, 60),
+        title: conversationTitle,
         createdAt: now,
         updatedAt: now,
       })
@@ -71,14 +115,19 @@ export async function POST(request: NextRequest) {
 
   // Wire abort to request signal
   const controller = new AbortController();
-  request.signal.addEventListener("abort", () => controller.abort());
+  request.signal.addEventListener("abort", () => controller.abort(), {
+    once: true,
+  });
 
   const finalConvId = convId;
 
   const stream = new ReadableStream({
     async start(streamController) {
       const encoder = new TextEncoder();
+      let closed = false;
+
       function emit(event: string, data: object) {
+        if (closed) return;
         streamController.enqueue(
           encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
         );
@@ -107,7 +156,11 @@ export async function POST(request: NextRequest) {
       }
 
       // Emit init immediately before SDK call
-      emit("init", { conversationId: finalConvId, sessionId: "" });
+      emit("init", {
+        conversationId: finalConvId,
+        sessionId: "",
+        title: conversationTitle,
+      });
 
       let partialText = "";
       // Tool uses from assistant frames with no text (tool-call-only turns).
@@ -137,6 +190,7 @@ export async function POST(request: NextRequest) {
               emit("init", {
                 conversationId: finalConvId,
                 sessionId: msg.session_id,
+                title: conversationTitle,
               });
             } else if (msg.type === "stream_event") {
               const event = msg.event;
@@ -232,19 +286,19 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          const errorMessage =
-            err instanceof Error ? err.message : "Unknown error";
+          console.error("Chat stream failed:", err);
           if (partialText.trim()) {
             persistAssistantMessage(
               partialText,
               pendingToolUses.length > 0 ? pendingToolUses : null,
             );
           }
-          emit("error", { message: errorMessage });
+          emit("error", { message: "Unable to complete the request" });
           break;
         }
       }
 
+      closed = true;
       streamController.close();
     },
   });

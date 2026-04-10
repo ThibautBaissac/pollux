@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guard";
 import { readMemoryFile, writeMemoryFile, type MemoryFile } from "@/lib/memory";
+import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 function parseFileParam(raw: string | null | undefined): MemoryFile {
   if (raw === "profile" || raw === "knowledge") return raw;
@@ -17,11 +18,17 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const requestError = requireTrustedRequest(request);
+  if (requestError) return requestError;
+
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const body = await request.json();
-  const { content, file: rawFile } = body;
+  const parsed = await readJsonObject(request);
+  if (parsed.response) return parsed.response;
+
+  const content = parsed.data.content;
+  const rawFile = parsed.data.file;
 
   if (typeof content !== "string") {
     return NextResponse.json(
@@ -30,7 +37,7 @@ export async function PUT(request: NextRequest) {
     );
   }
 
-  const file = parseFileParam(rawFile);
+  const file = parseFileParam(typeof rawFile === "string" ? rawFile : null);
 
   try {
     writeMemoryFile(file, content);

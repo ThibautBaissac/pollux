@@ -7,8 +7,12 @@ import {
   generateRecoveryCodes,
   storeRecoveryCodes,
 } from "@/lib/auth";
+import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 export async function POST(request: NextRequest) {
+  const requestError = requireTrustedRequest(request);
+  if (requestError) return requestError;
+
   if (isSetupComplete()) {
     return NextResponse.json(
       { error: "Setup already complete" },
@@ -16,8 +20,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = await request.json();
-  const { email, password } = body;
+  const parsed = await readJsonObject(request);
+  if (parsed.response) return parsed.response;
+
+  const { email, password } = parsed.data;
 
   if (!email || typeof email !== "string" || !email.includes("@")) {
     return NextResponse.json(

@@ -37,8 +37,22 @@ export function useConversations() {
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
+        const data = await res.json();
         setConversations((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, title } : c)),
+          prev.map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  title: data.title,
+                  updatedAt: data.updatedAt,
+                }
+              : c,
+          ),
+        );
+        window.dispatchEvent(
+          new CustomEvent("pollux:conversation-renamed", {
+            detail: data,
+          }),
         );
       }
     },

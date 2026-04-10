@@ -6,8 +6,13 @@ import {
   createSession,
   isSetupComplete,
 } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 export async function POST(request: NextRequest) {
+  const requestError = requireTrustedRequest(request);
+  if (requestError) return requestError;
+
   if (!isSetupComplete()) {
     return NextResponse.json(
       { error: "Setup not complete" },
@@ -15,8 +20,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const body = await request.json();
-  const { code, newPassword } = body;
+  const rateLimitError = enforceRateLimit(request, {
+    key: "auth:recover",
+    limit: 10,
+    windowMs: 15 * 60 * 1000,
+  });
+  if (rateLimitError) return rateLimitError;
+
+  const parsed = await readJsonObject(request);
+  if (parsed.response) return parsed.response;
+
+  const { code, newPassword } = parsed.data;
 
   if (!code || typeof code !== "string") {
     return NextResponse.json(

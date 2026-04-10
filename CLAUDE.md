@@ -13,9 +13,21 @@ npm run dev       # Next.js dev server on :3000
 npm run build     # Production build
 npm start         # Production server
 npm run lint      # ESLint
+npm test          # Vitest run
+npm run test:watch
+npm run coverage  # V8 coverage report + coverage/index.html
 ```
 
-No test runner is configured.
+The test suite uses `Vitest` in a Node environment. Coverage is collected with `@vitest/coverage-v8`.
+
+Current coverage scope is intentionally narrow and focused on pure server-side utility modules:
+
+- `src/lib/memory.ts`
+- `src/lib/rate-limit.ts`
+- `src/lib/rate-limit-config.ts`
+- `src/lib/request-guards.ts`
+
+Tests live in `tests/*.test.ts`. File-backed tests mock `process.cwd()` and use temporary directories so they do not mutate the real `data/` tree.
 
 ## Tech Stack
 
@@ -25,6 +37,7 @@ No test runner is configured.
 - **Agent:** `@anthropic-ai/claude-agent-sdk` — model is `claude-sonnet-4-6`
 - **Auth:** Cookie-based sessions, scrypt password hashing, single-user, recovery codes for offline password reset
 - **Streaming:** Server-Sent Events (SSE) via ReadableStream
+- **Testing:** Vitest 4 with V8 coverage
 
 ## Architecture
 

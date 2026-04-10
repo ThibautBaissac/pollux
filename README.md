@@ -37,6 +37,25 @@ npm run build
 npm start
 ```
 
+## Testing
+
+The project uses `Vitest` for Node-side unit tests and V8-powered coverage reporting.
+
+```bash
+npm test          # run the test suite once
+npm run test:watch
+npm run coverage  # terminal summary + HTML report in coverage/
+```
+
+Current coverage is scoped to the server-side utility modules that are covered by the suite today:
+
+- `src/lib/memory.ts`
+- `src/lib/rate-limit.ts`
+- `src/lib/rate-limit-config.ts`
+- `src/lib/request-guards.ts`
+
+Tests live under `tests/`. They run in a Node environment and avoid touching the real `data/` directory by using temporary directories for file-backed memory tests.
+
 ## Auth
 
 Single-user authentication with 7-day HTTP-only session cookies.
@@ -91,10 +110,13 @@ Extended thinking is enabled (adaptive mode). Sessions are persisted so follow-u
 | Auth | scrypt password hashing, HTTP-only session cookies, recovery codes |
 | Streaming | Server-Sent Events |
 | Markdown | react-markdown + remark-gfm + rehype-highlight |
+| Testing | Vitest + V8 coverage |
 
 ## Project structure
 
 ```
+tests/
+  *.test.ts                  # Vitest suite for server-side utilities
 src/
   app/
     api/chat/route.ts       # SSE streaming endpoint
@@ -115,6 +137,8 @@ src/
     auth.ts                  # Password hashing and session lifecycle
     auth-guard.ts            # requireAuth() and requirePasswordConfirmation() guards
     memory.ts                # Knowledge base read/write
+    rate-limit.ts            # In-memory auth rate limiting
+    request-guards.ts        # Origin/fetch-site checks and JSON request parsing
     db/                      # Drizzle schema and SQLite connection
   types/
     index.ts                 # Shared types (Message, Conversation, ToolUse)

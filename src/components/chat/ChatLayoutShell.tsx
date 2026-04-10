@@ -33,11 +33,6 @@ export function ChatLayoutShell({
     [],
   );
 
-  // Close sidebar on navigation
-  useEffect(() => {
-    closeSidebar();
-  }, [pathname, closeSidebar]);
-
   async function handleDelete(id: string) {
     await deleteConversation(id);
     if (id === activeId) {

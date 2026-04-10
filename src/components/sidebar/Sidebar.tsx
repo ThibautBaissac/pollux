@@ -119,6 +119,7 @@ export function Sidebar({
       <div className="px-3 pb-3">
         <Link
           href="/chat"
+          onClick={close}
           className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
         >
           <svg
@@ -218,6 +219,7 @@ export function Sidebar({
       <div className="border-t border-border-subtle px-3 py-3">
         <Link
           href="/settings"
+          onClick={close}
           className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
         >
           <svg

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useSidebar } from "./SidebarContext";
 import type { Conversation } from "@/types";
 
 export function ConversationItem({
@@ -15,6 +16,7 @@ export function ConversationItem({
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
 }) {
+  const { close: closeSidebar } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -46,6 +48,7 @@ export function ConversationItem({
     <div className="group relative">
       <Link
         href={`/chat/${conversation.id}`}
+        onClick={closeSidebar}
         className={`flex items-center gap-2 rounded-lg my-0.5 px-3 py-1.5 text-sm transition-colors ${
           isActive
             ? "bg-bg-hover text-text-primary"

@@ -1,5 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getCwd } from "@/lib/cwd-store";
+import { getMcpServers } from "@/lib/mcp-store";
 
 export function buildSystemPrompt(
   memoryContent: string,
@@ -51,6 +52,8 @@ export function startAgent(params: {
   abortController: AbortController;
 }) {
   const cwd = getCwd();
+  const mcpServers = getMcpServers();
+  const hasMcp = Object.keys(mcpServers).length > 0;
 
   return query({
     prompt: params.userMessage,
@@ -75,6 +78,7 @@ export function startAgent(params: {
       thinking: { type: "adaptive" },
       cwd,
       persistSession: true,
+      ...(hasMcp && { mcpServers }),
     },
   });
 }

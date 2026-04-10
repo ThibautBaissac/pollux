@@ -9,11 +9,12 @@ import { dream } from "./dream-config";
 
 export const MEMORY_DIR = join(process.cwd(), "data", "memory");
 
-export type MemoryFile = "profile" | "knowledge";
+export type MemoryFile = "profile" | "knowledge" | "soul";
 
 const PATHS: Record<MemoryFile, string> = {
   profile: join(MEMORY_DIR, "profile.md"),
   knowledge: join(MEMORY_DIR, "knowledge.md"),
+  soul: join(MEMORY_DIR, "soul.md"),
 };
 
 const DEFAULTS: Record<MemoryFile, string> = {
@@ -24,6 +25,16 @@ Tell Pollux about yourself: your name, preferences, and anything it should alway
   knowledge: `# Knowledge Base
 
 Add facts about yourself here. Pollux will use this information in every conversation.
+`,
+  soul: `# Soul
+
+I am Pollux, a personal AI assistant.
+
+I solve problems by doing, not by describing what I would do.
+I keep responses short unless depth is asked for.
+I say what I know, flag what I don't, and never fake confidence.
+I stay friendly and curious — I'd rather ask a good question than guess wrong.
+I treat the user's time as the scarcest resource, and their trust as the most valuable.
 `,
 };
 
@@ -57,6 +68,7 @@ export function writeMemoryFile(file: MemoryFile, content: string): void {
 // ---------------------------------------------------------------------------
 
 export function readMemory(): string {
+  const soul = readMemoryFile("soul");
   const profile = readMemoryFile("profile");
   const knowledge = readMemoryFile("knowledge");
 
@@ -67,7 +79,7 @@ export function readMemory(): string {
       ? `\n\n## Recent History\n${recent.map((e) => `- [${e.timestamp}] ${e.content}`).join("\n")}`
       : "";
 
-  return `## User Profile\n${profile}\n\n## Knowledge Base\n${knowledge}${recentSection}`;
+  return `## Personality\n${soul}\n\n## User Profile\n${profile}\n\n## Knowledge Base\n${knowledge}${recentSection}`;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,11 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { MemoryFile } from "@/lib/memory";
 
-type Tab = "profile" | "knowledge";
+const TABS: { key: MemoryFile; label: string; placeholder: string }[] = [
+  { key: "soul", label: "Personality", placeholder: "Define Pollux's personality, tone, and communication style..." },
+  { key: "profile", label: "Profile", placeholder: "Tell Pollux about yourself..." },
+  { key: "knowledge", label: "Knowledge", placeholder: "Add facts and knowledge here..." },
+];
+
+function loadFile(file: MemoryFile) {
+  return fetch(`/api/memory?file=${file}`).then((r) => {
+    if (!r.ok) throw new Error(`Failed to load ${file}`);
+    return r.json();
+  });
+}
 
 export function MemoryEditor() {
-  const [activeTab, setActiveTab] = useState<Tab>("profile");
+  const [activeTab, setActiveTab] = useState<MemoryFile>("soul");
+  const [soulContent, setSoulContent] = useState("");
   const [profileContent, setProfileContent] = useState("");
   const [knowledgeContent, setKnowledgeContent] = useState("");
   const [loading, setLoading] = useState(true);
@@ -14,17 +27,9 @@ export function MemoryEditor() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/memory?file=profile").then((r) => {
-        if (!r.ok) throw new Error("Failed to load profile");
-        return r.json();
-      }),
-      fetch("/api/memory?file=knowledge").then((r) => {
-        if (!r.ok) throw new Error("Failed to load knowledge");
-        return r.json();
-      }),
-    ])
-      .then(([profileData, knowledgeData]) => {
+    Promise.all([loadFile("soul"), loadFile("profile"), loadFile("knowledge")])
+      .then(([soulData, profileData, knowledgeData]) => {
+        setSoulContent(soulData.content);
         setProfileContent(profileData.content);
         setKnowledgeContent(knowledgeData.content);
         setLoading(false);
@@ -35,10 +40,10 @@ export function MemoryEditor() {
       });
   }, []);
 
-  const content =
-    activeTab === "profile" ? profileContent : knowledgeContent;
-  const setContent =
-    activeTab === "profile" ? setProfileContent : setKnowledgeContent;
+  const contentMap = { soul: soulContent, profile: profileContent, knowledge: knowledgeContent };
+  const setContentMap = { soul: setSoulContent, profile: setProfileContent, knowledge: setKnowledgeContent };
+  const content = contentMap[activeTab];
+  const setContent = setContentMap[activeTab];
 
   async function handleSave() {
     setSaving(true);
@@ -67,45 +72,33 @@ export function MemoryEditor() {
     return <p className="text-sm text-text-muted">Loading...</p>;
   }
 
+  const activeTabConfig = TABS.find((t) => t.key === activeTab)!;
+
   return (
     <div className="space-y-3">
       <div className="flex rounded-lg bg-bg-tertiary p-1">
-        <button
-          onClick={() => {
-            setActiveTab("profile");
-            setSaved(false);
-          }}
-          className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            activeTab === "profile"
-              ? "bg-bg-secondary text-text-primary"
-              : "text-text-secondary hover:text-text-primary"
-          }`}
-        >
-          Profile
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("knowledge");
-            setSaved(false);
-          }}
-          className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            activeTab === "knowledge"
-              ? "bg-bg-secondary text-text-primary"
-              : "text-text-secondary hover:text-text-primary"
-          }`}
-        >
-          Knowledge Base
-        </button>
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => {
+              setActiveTab(key);
+              setSaved(false);
+            }}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              activeTab === key
+                ? "bg-bg-secondary text-text-primary"
+                : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
         className="min-h-[200px] w-full resize-y rounded-lg border border-border bg-bg-tertiary px-3 py-2 font-mono text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
-        placeholder={
-          activeTab === "profile"
-            ? "Tell Pollux about yourself..."
-            : "Add facts and knowledge here..."
-        }
+        placeholder={activeTabConfig.placeholder}
       />
       {error && <p className="text-sm text-danger">{error}</p>}
       <button

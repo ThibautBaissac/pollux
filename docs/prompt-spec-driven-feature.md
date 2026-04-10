@@ -1,10 +1,3 @@
-# Spec-Driven Feature Development Prompt
-
-Copy, fill in `{{FEATURE_NAME}}`, and paste:
-
----
-
-```
 Implement: {{FEATURE_NAME}} (ref: docs/nanobot-feature-gap.md)
 
 Phase 1 — Spec
@@ -37,4 +30,3 @@ Rules:
 - No new dependencies unless strictly necessary (justify if so)
 - Adapt nanobot's approach to Pollux's stack, don't port it literally
 - Keep the UI consistent with existing Pollux dark theme and patterns
-```

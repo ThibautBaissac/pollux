@@ -137,24 +137,28 @@ async function phase1Summarize(): Promise<number> {
 const PHASE2_ANALYSIS_PROMPT = `Compare conversation history against current memory files. Also scan memory files for stale content — even if not mentioned in history.
 
 Output one line per finding:
+[SOUL] personality or communication style observation
 [PROFILE] atomic fact about the user (not already in memory)
 [KNOWLEDGE] atomic fact, decision, or project context
+[SOUL-REMOVE] reason for removal
 [PROFILE-REMOVE] reason for removal
 [KNOWLEDGE-REMOVE] reason for removal
 
 Rules:
 - Atomic facts: "prefers TypeScript over JavaScript" not "discussed programming"
 - Corrections replace old facts: [PROFILE] location is Tokyo, not Osaka
+- [SOUL] is for tone, style, and persona changes (e.g. "user wants more detailed answers")
 - Flag stale content: passed deadlines, completed tasks, superseded decisions
 - Do not add: transient status, temporary errors, conversational filler
 
 [SKIP] if nothing needs updating.`;
 
 const PHASE2_EDIT_PROMPT = `Update memory files based on the analysis below.
-- [PROFILE] / [KNOWLEDGE] entries: add content to the appropriate file
+- [SOUL] / [PROFILE] / [KNOWLEDGE] entries: add content to the appropriate file
 - [*-REMOVE] entries: delete the corresponding content
 
 File paths (relative to cwd):
+- data/memory/soul.md
 - data/memory/profile.md
 - data/memory/knowledge.md
 
@@ -181,11 +185,13 @@ async function phase2EditMemory(
     .map((e) => `[${e.timestamp}] ${e.content}`)
     .join("\n");
 
+  const currentSoul = readMemoryFile("soul");
   const currentProfile = readMemoryFile("profile");
   const currentKnowledge = readMemoryFile("knowledge");
 
   const context = [
     `## Conversation History\n${historyText}`,
+    `## Current soul.md (${currentSoul.length} chars)\n${currentSoul}`,
     `## Current profile.md (${currentProfile.length} chars)\n${currentProfile}`,
     `## Current knowledge.md (${currentKnowledge.length} chars)\n${currentKnowledge}`,
   ].join("\n\n");
@@ -224,6 +230,7 @@ async function phase2EditMemory(
   // Phase 2b: Edit files via SDK agent with Read + Edit tools
   const editContext = [
     `## Analysis Result\n${analysis}`,
+    `## Current soul.md\n${currentSoul}`,
     `## Current profile.md\n${currentProfile}`,
     `## Current knowledge.md\n${currentKnowledge}`,
   ].join("\n\n");

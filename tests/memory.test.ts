@@ -25,13 +25,29 @@ describe("memory", () => {
   it("creates missing memory files with defaults", async () => {
     const { MEMORY_DIR, readMemoryFile } = await loadMemoryModule();
 
+    const soul = readMemoryFile("soul");
     const profile = readMemoryFile("profile");
     const knowledge = readMemoryFile("knowledge");
 
+    expect(soul).toContain("# Soul");
     expect(profile).toContain("# User Profile");
     expect(knowledge).toContain("# Knowledge Base");
+    expect(existsSync(join(MEMORY_DIR, "soul.md"))).toBe(true);
     expect(existsSync(join(MEMORY_DIR, "profile.md"))).toBe(true);
     expect(existsSync(join(MEMORY_DIR, "knowledge.md"))).toBe(true);
+  });
+
+  it("reads and writes soul file", async () => {
+    const { readMemoryFile, writeMemoryFile } = await loadMemoryModule();
+
+    // First read creates default
+    const defaultSoul = readMemoryFile("soul");
+    expect(defaultSoul).toContain("I am Pollux");
+
+    // Write custom personality
+    writeMemoryFile("soul", "# Soul\n\nI am a pirate assistant. Arrr!\n");
+    const custom = readMemoryFile("soul");
+    expect(custom).toContain("pirate assistant");
   });
 
   it("returns empty history and a zero cursor before files exist", async () => {
@@ -91,8 +107,10 @@ describe("memory", () => {
       MEMORY_DIR,
     } = await loadMemoryModule();
 
+    readMemoryFile("soul");
     readMemoryFile("profile");
     readMemoryFile("knowledge");
+    writeMemoryFile("soul", "# Soul\n\nI am helpful.\n");
     writeMemoryFile("profile", "# User Profile\n\nAda\n");
     writeMemoryFile("knowledge", "# Knowledge Base\n\nLoves tests\n");
 
@@ -105,12 +123,19 @@ describe("memory", () => {
 
     const combined = readMemory();
 
+    // Personality comes first
+    expect(combined).toContain("## Personality");
+    expect(combined).toContain("I am helpful.");
     expect(combined).toContain("## User Profile");
     expect(combined).toContain("Ada");
     expect(combined).toContain("## Knowledge Base");
     expect(combined).toContain("Loves tests");
     expect(combined).toContain("## Recent History");
     expect(combined).toContain("[2026-04-10T13:00:00.000Z] said hello");
+    // Personality section appears before profile
+    expect(combined.indexOf("## Personality")).toBeLessThan(
+      combined.indexOf("## User Profile"),
+    );
     expect(readFileSync(join(MEMORY_DIR, ".dream_cursor"), "utf-8")).toBe("0");
   });
 });

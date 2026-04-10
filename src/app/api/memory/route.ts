@@ -4,7 +4,7 @@ import { readMemoryFile, writeMemoryFile, type MemoryFile } from "@/lib/memory";
 import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 function parseFileParam(raw: string | null | undefined): MemoryFile {
-  if (raw === "profile" || raw === "knowledge") return raw;
+  if (raw === "profile" || raw === "knowledge" || raw === "soul") return raw;
   return "knowledge";
 }
 

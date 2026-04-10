@@ -5,7 +5,7 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
-interface RateLimitOptions {
+export interface RateLimitOptions {
   key: string;
   limit: number;
   windowMs: number;

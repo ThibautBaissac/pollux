@@ -6,8 +6,15 @@ import type {
   ConversationWithMessages,
   Message,
   StreamStatus,
-  ToolUse,
 } from "@/types";
+import {
+  parseSseStream,
+  reconcileAfterAbort,
+  applyDelta,
+  applyToolUse,
+  applyConversationId,
+  pruneTrailingEmptyAssistant,
+} from "./useChatStream";
 
 export interface UseChatOptions {
   onConversationCreated?: () => void;
@@ -92,7 +99,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
       );
   }, [conversationId]);
 
-  const applyConversationSnapshot = useCallback(
+  const applySnapshot = useCallback(
     (data: ConversationWithMessages) => {
       if (!isMountedRef.current) return;
       setConversationId(data.id);
@@ -108,17 +115,6 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     loadRequestIdRef.current += 1;
     loadControllerRef.current?.abort();
     loadControllerRef.current = null;
-  }, []);
-
-  const pruneEmptyAssistant = useCallback(() => {
-    setMessages((prev) => {
-      const updated = [...prev];
-      const last = updated[updated.length - 1];
-      if (last?.role === "assistant" && !last.content.trim()) {
-        updated.pop();
-      }
-      return updated;
-    });
   }, []);
 
   const reset = useCallback(() => {
@@ -145,15 +141,13 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     setError(null);
     try {
       const res = await fetchConversationSnapshot(id, controller.signal);
-      if (requestId !== loadRequestIdRef.current) {
-        return;
-      }
+      if (requestId !== loadRequestIdRef.current) return;
       if (!res.ok) {
         setError(`Failed to load conversation (${res.status})`);
         setStatus("error");
         return;
       }
-      applyConversationSnapshot(res.data);
+      applySnapshot(res.data);
     } catch (err: unknown) {
       if (
         controller.signal.aborted ||
@@ -169,7 +163,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
         loadControllerRef.current = null;
       }
     }
-  }, [applyConversationSnapshot, invalidatePendingLoad]);
+  }, [applySnapshot, invalidatePendingLoad]);
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -180,12 +174,10 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
       setError(null);
 
       const pendingConversationId = conversationId ?? crypto.randomUUID();
-      const optimisticTitle = text.slice(0, 60);
       if (!conversationId) {
-        setTitle(optimisticTitle);
+        setTitle(text.slice(0, 60));
       }
 
-      // Optimistic user message
       const userMsg: Message = {
         id: crypto.randomUUID(),
         conversationId: pendingConversationId,
@@ -195,7 +187,6 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
         createdAt: new Date().toISOString(),
       };
 
-      // Placeholder assistant message for streaming
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
         conversationId: pendingConversationId,
@@ -214,7 +205,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
       let hasNavigated = false;
       const isNewConversation = !conversationId;
 
-      function rollbackOptimisticRequest() {
+      function rollback() {
         setMessages((prev) => prev.slice(0, -2));
         if (isNewConversation) {
           setConversationId(null);
@@ -222,62 +213,13 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
         }
       }
 
-      function finalizeFailedStream(message: string) {
-        pruneEmptyAssistant();
-        setError(message);
-        setStatus("error");
-      }
-
-      async function reconcileAfterAbort() {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          if (!isMountedRef.current) {
-            return false;
-          }
-
-          try {
-            const snapshot = await fetchConversationSnapshot(
-              pendingConversationId,
-            );
-
-            if (snapshot.ok) {
-              applyConversationSnapshot(snapshot.data);
-              if (isNewConversation && !hasNavigated) {
-                router.replace(`/chat/${pendingConversationId}`, {
-                  scroll: false,
-                });
-                hasNavigated = true;
-                onConversationCreatedRef.current?.();
-              }
-              return true;
-            }
-
-            if (snapshot.status !== 404) {
-              setError(`Failed to load conversation (${snapshot.status})`);
-              setStatus("error");
-              return false;
-            }
-          } catch (err: unknown) {
-            if (err instanceof Error && err.name === "AbortError") {
-              return false;
-            }
-
-            if (attempt === 2) {
-              setError("Connection failed");
-              setStatus("error");
-              return false;
-            }
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 150));
+      function navigateToConversation(convId: string) {
+        if (hasNavigated) return;
+        router.replace(`/chat/${convId}`, { scroll: false });
+        hasNavigated = true;
+        if (isNewConversation) {
+          onConversationCreatedRef.current?.();
         }
-
-        if (!isMountedRef.current) {
-          return false;
-        }
-
-        rollbackOptimisticRequest();
-        setStatus("idle");
-        return false;
       }
 
       (async () => {
@@ -295,7 +237,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
 
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            rollbackOptimisticRequest();
+            rollback();
             setError(err.error || `Request failed (${res.status})`);
             setStatus("error");
             return;
@@ -303,51 +245,84 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
 
           requestAccepted = true;
 
-          const reader = res.body!.getReader();
-          const decoder = new TextDecoder();
-          let buffer = "";
-          let currentEvent = "";
+          for await (const event of parseSseStream(res.body!.getReader())) {
+            switch (event.type) {
+              case "init":
+                setConversationId(event.conversationId);
+                if (typeof event.title === "string") {
+                  setTitle(event.title);
+                }
+                setMessages((prev) =>
+                  applyConversationId(
+                    prev,
+                    pendingConversationId,
+                    event.conversationId,
+                  ),
+                );
+                navigateToConversation(event.conversationId);
+                break;
 
-          function processLines(lines: string[]) {
-            for (const line of lines) {
-              if (line.startsWith("event: ")) {
-                currentEvent = line.slice(7);
-              } else if (line.startsWith("data: ") && currentEvent) {
-                handleEvent(currentEvent, JSON.parse(line.slice(6)));
-                currentEvent = "";
-              }
+              case "delta":
+                setMessages((prev) => applyDelta(prev, event.text));
+                break;
+
+              case "tool":
+                setMessages((prev) =>
+                  applyToolUse(prev, { name: event.name }),
+                );
+                break;
+
+              case "done":
+                setMessages((prev) => pruneTrailingEmptyAssistant(prev));
+                setStatus("idle");
+                break;
+
+              case "error":
+                setMessages((prev) => pruneTrailingEmptyAssistant(prev));
+                setError(event.message);
+                setStatus("error");
+                break;
             }
           }
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop()!;
-            processLines(lines);
-          }
-
-          if (buffer.trim()) {
-            processLines(buffer.split("\n"));
-          }
-
-          pruneEmptyAssistant();
+          setMessages((prev) => pruneTrailingEmptyAssistant(prev));
           setStatus((s) => (s === "streaming" ? "idle" : s));
         } catch (err: unknown) {
           if (err instanceof Error && err.name === "AbortError") {
-            if (!isMountedRef.current) {
-              return;
+            if (!isMountedRef.current) return;
+
+            const result = await reconcileAfterAbort(
+              pendingConversationId,
+              fetchConversationSnapshot,
+            );
+
+            if (!isMountedRef.current) return;
+
+            switch (result.type) {
+              case "resolved":
+                applySnapshot(
+                  result.data as ConversationWithMessages,
+                );
+                navigateToConversation(pendingConversationId);
+                break;
+              case "not_found":
+                rollback();
+                setStatus("idle");
+                break;
+              case "error":
+                setError(result.message);
+                setStatus("error");
+                break;
             }
-            await reconcileAfterAbort();
           } else {
             const message =
               err instanceof Error ? err.message : "Connection failed";
             if (requestAccepted) {
-              finalizeFailedStream(message);
+              setMessages((prev) => pruneTrailingEmptyAssistant(prev));
+              setError(message);
+              setStatus("error");
             } else {
-              rollbackOptimisticRequest();
+              rollback();
               setError(message);
               setStatus("error");
             }
@@ -358,86 +333,13 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
           }
         }
       })();
-
-      function handleEvent(
-        eventType: string,
-        data: Record<string, unknown>,
-      ) {
-        switch (eventType) {
-          case "init": {
-            const newConvId = data.conversationId as string;
-            setConversationId(newConvId);
-            if (typeof data.title === "string") {
-              setTitle(data.title);
-            }
-            setMessages((prev) =>
-              prev.map((message) =>
-                message.conversationId === pendingConversationId
-                  ? { ...message, conversationId: newConvId }
-                  : message,
-              ),
-            );
-            if (!hasNavigated) {
-              router.replace(`/chat/${newConvId}`, { scroll: false });
-              hasNavigated = true;
-              if (isNewConversation) {
-                onConversationCreatedRef.current?.();
-              }
-            }
-            break;
-          }
-          case "delta": {
-            const text = data.text as string;
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last && last.role === "assistant") {
-                updated[updated.length - 1] = {
-                  ...last,
-                  content: last.content + text,
-                };
-              }
-              return updated;
-            });
-            break;
-          }
-          case "tool": {
-            const toolUse: ToolUse = { name: data.name as string };
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last && last.role === "assistant") {
-                const existing = last.toolUses ?? [];
-                if (!existing.some((t) => t.name === toolUse.name)) {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    toolUses: [...existing, toolUse],
-                  };
-                }
-              }
-              return updated;
-            });
-            break;
-          }
-          case "done": {
-            pruneEmptyAssistant();
-            setStatus("idle");
-            break;
-          }
-          case "error": {
-            finalizeFailedStream(data.message as string);
-            break;
-          }
-        }
-      }
     },
     [
-      applyConversationSnapshot,
+      applySnapshot,
       status,
       conversationId,
       router,
       invalidatePendingLoad,
-      pruneEmptyAssistant,
     ],
   );
 

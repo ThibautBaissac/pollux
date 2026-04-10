@@ -7,6 +7,7 @@ import {
   isSetupComplete,
 } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { RATE_LIMITS } from "@/lib/rate-limit-config";
 import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 export async function POST(request: NextRequest) {
@@ -20,11 +21,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const rateLimitError = enforceRateLimit(request, {
-    key: "auth:recover",
-    limit: 10,
-    windowMs: 15 * 60 * 1000,
-  });
+  const rateLimitError = enforceRateLimit(request, RATE_LIMITS.recover);
   if (rateLimitError) return rateLimitError;
 
   const parsed = await readJsonObject(request);

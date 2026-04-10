@@ -5,6 +5,7 @@ import {
 } from "@/lib/auth-guard";
 import { setEmail } from "@/lib/auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
+import { RATE_LIMITS } from "@/lib/rate-limit-config";
 import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 export async function POST(request: NextRequest) {
@@ -14,11 +15,7 @@ export async function POST(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const rateLimitError = enforceRateLimit(request, {
-    key: "auth:change-email",
-    limit: 8,
-    windowMs: 5 * 60 * 1000,
-  });
+  const rateLimitError = enforceRateLimit(request, RATE_LIMITS.changeEmail);
   if (rateLimitError) return rateLimitError;
 
   const parsed = await readJsonObject(request);

@@ -70,11 +70,6 @@ export function readMemory(): string {
   return `## User Profile\n${profile}\n\n## Knowledge Base\n${knowledge}${recentSection}`;
 }
 
-/** @deprecated Use writeMemoryFile("knowledge", content) */
-export function writeMemory(content: string): void {
-  writeMemoryFile("knowledge", content);
-}
-
 // ---------------------------------------------------------------------------
 // history.jsonl — appended by Phase 1, consumed by Phase 2
 // ---------------------------------------------------------------------------

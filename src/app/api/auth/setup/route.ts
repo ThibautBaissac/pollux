@@ -7,6 +7,8 @@ import {
   generateRecoveryCodes,
   storeRecoveryCodes,
 } from "@/lib/auth";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { RATE_LIMITS } from "@/lib/rate-limit-config";
 import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
 export async function POST(request: NextRequest) {
@@ -19,6 +21,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+
+  const rateLimitError = enforceRateLimit(request, RATE_LIMITS.setup);
+  if (rateLimitError) return rateLimitError;
 
   const parsed = await readJsonObject(request);
   if (parsed.response) return parsed.response;

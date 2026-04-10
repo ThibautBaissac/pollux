@@ -12,9 +12,7 @@ Comparison of user-facing features present in [nanobot](../../../ThibautBaissac/
 
 | Feature | What it does | User Impact | Effort |
 |---------|-------------|-------------|--------|
-| **Bot personality file (SOUL.md)** | Editable markdown that defines the AI's tone, communication style, and persona — injected into every system prompt | **High** — lets the user shape how Pollux talks to them without touching code | **S** — add a new memory file + inject it in `agent.ts`; mirror existing `profile.md`/`knowledge.md` pattern |
 | **Memory version history & rollback** | UI to browse git-committed memory snapshots and restore a previous version (`/dream-log`, `/dream-restore`) | **Med** — safety net when Dream overwrites something important; currently requires CLI git | **M** — git log/diff/checkout plumbing exists in `git-memory.ts`; needs a settings UI panel + API route |
-| **Searchable conversation history** | Full-text search across past conversation summaries stored in `history.jsonl` | **Med** — currently no way to find "that thing I asked about last week" | **S** — grep over JSONL + new API route + search input in sidebar |
 
 ## Agent Capabilities
 
@@ -36,7 +34,6 @@ Comparison of user-facing features present in [nanobot](../../../ThibautBaissac/
 
 | Feature | What it does | User Impact | Effort |
 |---------|-------------|-------------|--------|
-| **Model selection** | User picks which LLM to use (Claude Opus, Sonnet, Haiku) from settings | **Med** — lets users trade cost vs. quality; currently hardcoded to Sonnet 4.6 | **M** — SDK supports model switching; needs settings UI, DB config |
 | **Reasoning effort control** | Toggle between low/medium/high/adaptive thinking depth per conversation or globally | **Med** — quick questions get fast answers; complex tasks get deep reasoning | **S** — `agent.ts` already uses adaptive; expose a dropdown in settings or per-message toggle |
 | **Temperature / max tokens config** | User tunes response creativity and length limits | **Low** — most users never touch these; advanced-only knob | **S** — add fields to settings, pass through to SDK |
 
@@ -46,7 +43,6 @@ Comparison of user-facing features present in [nanobot](../../../ThibautBaissac/
 |---------|-------------|-------------|--------|
 | **In-chat slash commands** | `/new`, `/stop`, `/status`, `/dream` — quick actions typed directly in the message input | **Med** — faster than navigating menus; power-user productivity boost | **S** — intercept input starting with `/` in `ChatInput`, dispatch client-side or to API |
 | **Token / cost usage display** | Show tokens consumed and estimated cost per message or session, viewable via `/status` | **Med** — essential for budget awareness on a pay-per-token API | **S** — SDK returns usage metadata; store in messages table, render in UI |
-| **Conversation search** | Search conversations by title or content from the sidebar | **Med** — currently must scroll through conversation list manually | **S** — SQLite FTS or LIKE query + search input above conversation list |
 
 ## Extensibility
 

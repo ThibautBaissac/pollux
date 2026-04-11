@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   isSetupComplete,
   createSession,
-  setEmail,
-  changePassword,
+  performFirstTimeSetup,
   generateRecoveryCodes,
   storeRecoveryCodes,
 } from "@/lib/auth";
@@ -44,8 +43,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await changePassword(password);
-  setEmail(email);
+  const didSetup = await performFirstTimeSetup(email, password);
+  if (!didSetup) {
+    return NextResponse.json(
+      { error: "Setup already complete" },
+      { status: 400 },
+    );
+  }
 
   const { codes, hashes } = await generateRecoveryCodes();
   storeRecoveryCodes(hashes);

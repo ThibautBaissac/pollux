@@ -178,12 +178,10 @@ export function applyToolUse(messages: Message[], toolUse: ToolUse): Message[] {
   const last = updated[updated.length - 1];
   if (last && last.role === "assistant") {
     const existing = last.toolUses ?? [];
-    if (!existing.some((t) => t.name === toolUse.name)) {
-      updated[updated.length - 1] = {
-        ...last,
-        toolUses: [...existing, toolUse],
-      };
-    }
+    updated[updated.length - 1] = {
+      ...last,
+      toolUses: [...existing, toolUse],
+    };
   }
   return updated;
 }

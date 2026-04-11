@@ -153,6 +153,40 @@ export async function changePassword(newPassword: string): Promise<void> {
     .run();
 }
 
+/**
+ * Atomically performs first-time setup: sets password + email inside a
+ * transaction that re-checks whether setup has already been completed,
+ * preventing race conditions from concurrent requests.
+ * Returns false if setup was already complete (another request won the race).
+ */
+export async function performFirstTimeSetup(
+  email: string,
+  password: string,
+): Promise<boolean> {
+  const hash = await hashPassword(password);
+
+  let succeeded = false;
+  db.transaction((tx) => {
+    const existing = tx
+      .select()
+      .from(authConfig)
+      .where(eq(authConfig.key, "password_hash"))
+      .get();
+    if (existing) return; // already set up — another request won the race
+
+    tx.insert(authConfig)
+      .values({ key: "password_hash", value: hash })
+      .run();
+    tx.insert(authConfig)
+      .values({ key: "email", value: email })
+      .onConflictDoUpdate({ target: authConfig.key, set: { value: email } })
+      .run();
+    succeeded = true;
+  });
+
+  return succeeded;
+}
+
 export async function generateRecoveryCodes(): Promise<{
   codes: string[];
   hashes: string[];

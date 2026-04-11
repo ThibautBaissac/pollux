@@ -140,6 +140,7 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
       let partialText = "";
       let pendingToolUses: ToolUse[] = [];
       let currentSessionId = params.sdkSessionId;
+      let deltasEmitted = false;
       let attempts = 0;
 
       while (attempts < 2) {
@@ -157,6 +158,7 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
             if (abortSignal.aborted) break;
 
             if (msg.type === "system" && msg.subtype === "init") {
+              currentSessionId = msg.session_id;
               db.update(conversations)
                 .set({ sdkSessionId: msg.session_id })
                 .where(eq(conversations.id, convId))
@@ -173,6 +175,7 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
                 event.delta.type === "text_delta"
               ) {
                 partialText += event.delta.text;
+                deltasEmitted = true;
                 emit("delta", { text: event.delta.text });
               }
             } else if (msg.type === "assistant") {
@@ -251,7 +254,7 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
             break;
           }
 
-          if (currentSessionId && attempts < 2) {
+          if (currentSessionId && attempts < 2 && !deltasEmitted) {
             db.update(conversations)
               .set({ sdkSessionId: null })
               .where(eq(conversations.id, convId))
@@ -259,6 +262,7 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
             currentSessionId = undefined;
             partialText = "";
             pendingToolUses = [];
+            deltasEmitted = false;
             continue;
           }
 

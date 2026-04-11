@@ -127,6 +127,7 @@ describe("useChatStream helpers", () => {
     expect(withTool[1].toolUses).toEqual([{ name: "WebSearch" }]);
     expect(applyToolUse(withTool, { name: "WebSearch" })[1].toolUses).toEqual([
       { name: "WebSearch" },
+      { name: "WebSearch" },
     ]);
 
     expect(applyConversationId(withTool, "conv-old", "conv-new")).toEqual([

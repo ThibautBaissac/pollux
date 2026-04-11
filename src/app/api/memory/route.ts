@@ -3,9 +3,13 @@ import { requireAuth } from "@/lib/auth-guard";
 import { readMemoryFile, writeMemoryFile, type MemoryFile } from "@/lib/memory";
 import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
-function parseFileParam(raw: string | null | undefined): MemoryFile {
-  if (raw === "profile" || raw === "knowledge" || raw === "soul") return raw;
-  return "knowledge";
+const VALID_FILES = new Set<MemoryFile>(["profile", "knowledge", "soul"]);
+
+function parseFileParam(
+  raw: string | null | undefined,
+): MemoryFile | null {
+  if (raw && VALID_FILES.has(raw as MemoryFile)) return raw as MemoryFile;
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -13,6 +17,12 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const file = parseFileParam(request.nextUrl.searchParams.get("file"));
+  if (!file) {
+    return NextResponse.json(
+      { error: "Invalid file parameter. Must be: profile, knowledge, or soul" },
+      { status: 400 },
+    );
+  }
   const content = readMemoryFile(file);
   return NextResponse.json({ content });
 }
@@ -38,6 +48,12 @@ export async function PUT(request: NextRequest) {
   }
 
   const file = parseFileParam(typeof rawFile === "string" ? rawFile : null);
+  if (!file) {
+    return NextResponse.json(
+      { error: "Invalid file parameter. Must be: profile, knowledge, or soul" },
+      { status: 400 },
+    );
+  }
 
   try {
     writeMemoryFile(file, content);

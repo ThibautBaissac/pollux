@@ -7,11 +7,32 @@ import {
   type StoredMcpServer,
 } from "@/lib/mcp-store";
 
+function redactSecrets(
+  servers: Record<string, StoredMcpServer>,
+): Record<string, StoredMcpServer> {
+  const redacted: Record<string, StoredMcpServer> = {};
+  for (const [name, server] of Object.entries(servers)) {
+    const { ...safe } = server;
+    if ("env" in safe) {
+      (safe as Record<string, unknown>).env = Object.fromEntries(
+        Object.keys(safe.env!).map((k) => [k, "********"]),
+      );
+    }
+    if ("headers" in safe) {
+      (safe as Record<string, unknown>).headers = Object.fromEntries(
+        Object.keys(safe.headers!).map((k) => [k, "********"]),
+      );
+    }
+    redacted[name] = safe;
+  }
+  return redacted;
+}
+
 export async function GET() {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  return NextResponse.json({ servers: getMcpServers() });
+  return NextResponse.json({ servers: redactSecrets(getMcpServers()) });
 }
 
 export async function PUT(request: NextRequest) {

@@ -5,6 +5,15 @@ import { conversations, messages } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 
+function safeParseToolUses(raw: string): unknown[] | null {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -38,7 +47,7 @@ export async function GET(
     messages: msgs.map((m) => ({
       ...m,
       createdAt: m.createdAt.toISOString(),
-      toolUses: m.toolUses ? JSON.parse(m.toolUses) : null,
+      toolUses: m.toolUses ? safeParseToolUses(m.toolUses) : null,
     })),
   });
 }

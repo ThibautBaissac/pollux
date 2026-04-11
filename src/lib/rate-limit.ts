@@ -13,16 +13,9 @@ export interface RateLimitOptions {
 
 const buckets = new Map<string, RateLimitEntry>();
 
-function getClientKey(request: NextRequest): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const first = forwardedFor.split(",")[0]?.trim();
-    if (first) return first;
-  }
-
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) return realIp;
-
+function getClientKey(_request: NextRequest): string {
+  // Local-first app: ignore spoofable X-Forwarded-For / X-Real-IP headers.
+  // All requests share one bucket per rate-limit key.
   return "local";
 }
 

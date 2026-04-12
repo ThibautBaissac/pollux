@@ -17,6 +17,7 @@ const reminderTool = tool(
 
 Actions:
 - add: Schedule a new reminder. Requires name, message, and either cronExpr (recurring) or scheduledAt (one-time).
+  - kind (optional): "notify" (default) posts the message as a static reminder; "agent" executes the message as a prompt in the linked conversation at each run (use for automated monitoring / veille)
   - cronExpr uses standard 5-field cron syntax: minute hour day-of-month month day-of-week
   - Common patterns: "0 15 * * 5" = every Friday 3 PM, "30 9 * * 1-5" = weekdays 9:30 AM, "0 0 1 * *" = 1st of month midnight
   - scheduledAt is an ISO 8601 datetime string for one-time reminders
@@ -26,7 +27,8 @@ Actions:
   {
     action: z.enum(["add", "list", "remove"]),
     name: z.string().optional().describe("Human-readable label for the reminder"),
-    message: z.string().optional().describe("Instruction or text delivered when the reminder fires"),
+    message: z.string().optional().describe("Text posted (notify) or prompt executed (agent) when the reminder fires"),
+    kind: z.enum(["notify", "agent"]).optional().describe("notify (default) posts a static message; agent runs the message as a prompt for automated monitoring"),
     scheduleType: z.enum(["once", "recurring"]).optional(),
     cronExpr: z.string().optional().describe("5-field cron expression (for recurring reminders)"),
     scheduledAt: z.string().optional().describe("ISO 8601 datetime (for one-time reminders)"),
@@ -60,6 +62,7 @@ Actions:
       const reminder = createReminder({
         name: args.name,
         message: args.message,
+        kind: args.kind,
         scheduleType: args.scheduleType,
         cronExpr: args.cronExpr,
         scheduledAt: args.scheduledAt,

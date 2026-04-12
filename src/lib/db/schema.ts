@@ -41,12 +41,16 @@ export const reminders = sqliteTable("reminders", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   message: text("message").notNull(),
+  kind: text("kind", { enum: ["notify", "agent"] })
+    .notNull()
+    .default("notify"),
   scheduleType: text("schedule_type", { enum: ["once", "recurring"] })
     .notNull(),
   cronExpr: text("cron_expr"),
   scheduledAt: integer("scheduled_at", { mode: "timestamp" }),
   nextRunAt: integer("next_run_at", { mode: "timestamp" }).notNull(),
   lastRunAt: integer("last_run_at", { mode: "timestamp" }),
+  runningSince: integer("running_since", { mode: "timestamp" }),
   timezone: text("timezone").notNull().default("UTC"),
   conversationId: text("conversation_id")
     .notNull()

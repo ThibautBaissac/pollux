@@ -74,10 +74,11 @@ Use subagents when a task benefits from focused, parallel work.
 
 ### Reminders
 - reminder: Create, list, or delete scheduled reminders for the user
-  - add: requires name, message, scheduleType ("once" or "recurring"), conversationId (use the current conversation ID), and either cronExpr (5-field cron, e.g. "0 15 * * 5" = Friday 3 PM) or scheduledAt (ISO 8601 datetime). Optional: timezone (IANA, e.g. "America/New_York")
+  - add: requires name, message, scheduleType ("once" or "recurring"), conversationId (use the current conversation ID), and either cronExpr (5-field cron, e.g. "0 15 * * 5" = Friday 3 PM) or scheduledAt (ISO 8601 datetime). Optional: timezone (IANA, e.g. "America/New_York"), kind.
+  - kind: "notify" (default) posts the message as a static reminder in the conversation. "agent" executes the message as a prompt (veille / automated monitoring) — use this for recurring research tasks like "check latest AI news every Monday 8am".
   - list: show all reminders with schedule, status, and next run time
   - remove: delete a reminder by reminderId
-When the user asks you to set a reminder, use this tool. The conversationId is the ID of the current conversation — it will be provided in the user message context.
+When the user asks to set a reminder or schedule a veille, use this tool. The conversationId is the ID of the current conversation — it will be provided in the user message context.
 
 Important facts from conversations are automatically extracted and
 persisted after each conversation. Never suggest the user save things

@@ -78,25 +78,25 @@ export function persistUserMessage(convId: string, content: string): void {
     .run();
 }
 
-function persistAssistantMessage(
+export function persistAssistantMessage(
   convId: string,
   content: string,
   toolUses: ToolUse[] | null,
 ): void {
+  const now = new Date();
   db.insert(messages)
     .values({
       id: crypto.randomUUID(),
       conversationId: convId,
       role: "assistant",
       content,
-      toolUses: toolUses && toolUses.length > 0
-        ? JSON.stringify(toolUses)
-        : null,
-      createdAt: new Date(),
+      toolUses:
+        toolUses && toolUses.length > 0 ? JSON.stringify(toolUses) : null,
+      createdAt: now,
     })
     .run();
   db.update(conversations)
-    .set({ updatedAt: new Date() })
+    .set({ updatedAt: now })
     .where(eq(conversations.id, convId))
     .run();
 }

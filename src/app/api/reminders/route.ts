@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   const parsed = await readJsonObject(request);
   if (parsed.response) return parsed.response;
 
-  const { name, message, scheduleType, cronExpr, scheduledAt, timezone, conversationId } =
+  const { name, message, kind, scheduleType, cronExpr, scheduledAt, timezone, conversationId } =
     parsed.data;
 
   if (typeof name !== "string" || !name.trim()) {
@@ -28,6 +28,12 @@ export async function POST(request: NextRequest) {
   }
   if (typeof message !== "string" || !message.trim()) {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
+  }
+  if (kind !== undefined && kind !== "notify" && kind !== "agent") {
+    return NextResponse.json(
+      { error: "kind must be 'notify' or 'agent'" },
+      { status: 400 },
+    );
   }
   if (scheduleType !== "once" && scheduleType !== "recurring") {
     return NextResponse.json(
@@ -75,6 +81,7 @@ export async function POST(request: NextRequest) {
     const reminder = createReminder({
       name: name.trim().slice(0, 200),
       message: message.trim().slice(0, 2000),
+      kind: kind as "notify" | "agent" | undefined,
       scheduleType,
       cronExpr: cronExpr as string | undefined,
       scheduledAt: scheduledAt as string | undefined,

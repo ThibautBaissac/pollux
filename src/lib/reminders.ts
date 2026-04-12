@@ -1,8 +1,10 @@
 import { db } from "@/lib/db";
 import { conversations, messages, reminders } from "@/lib/db/schema";
-import { eq, and, lte, asc } from "drizzle-orm";
+import { eq, and, lte, asc, isNull, lt, sql, inArray } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 import type { Reminder } from "@/types";
+
+const STALE_RUN_MS = 10 * 60 * 1000;
 
 function computeNextRun(cronExpr: string, timezone: string): Date {
   const expr = CronExpressionParser.parse(cronExpr, { tz: timezone });
@@ -14,11 +16,13 @@ function toApiReminder(row: typeof reminders.$inferSelect): Reminder {
     id: row.id,
     name: row.name,
     message: row.message,
+    kind: row.kind,
     scheduleType: row.scheduleType,
     cronExpr: row.cronExpr,
     scheduledAt: row.scheduledAt?.toISOString() ?? null,
     nextRunAt: row.nextRunAt.toISOString(),
     lastRunAt: row.lastRunAt?.toISOString() ?? null,
+    runningSince: row.runningSince?.toISOString() ?? null,
     timezone: row.timezone,
     conversationId: row.conversationId,
     enabled: row.enabled === 1,
@@ -61,6 +65,7 @@ export function getReminder(id: string): Reminder | null {
 export function createReminder(params: {
   name: string;
   message: string;
+  kind?: "notify" | "agent";
   scheduleType: "once" | "recurring";
   cronExpr?: string;
   scheduledAt?: string;
@@ -68,6 +73,7 @@ export function createReminder(params: {
   conversationId: string;
 }): Reminder {
   const tz = params.timezone ?? "UTC";
+  const kind = params.kind ?? "notify";
   const now = new Date();
 
   let nextRunAt: Date;
@@ -94,6 +100,7 @@ export function createReminder(params: {
       id,
       name: params.name,
       message: params.message,
+      kind,
       scheduleType: params.scheduleType,
       cronExpr,
       scheduledAt,
@@ -109,11 +116,13 @@ export function createReminder(params: {
     id,
     name: params.name,
     message: params.message,
+    kind,
     scheduleType: params.scheduleType,
     cronExpr,
     scheduledAt,
     nextRunAt,
     lastRunAt: null,
+    runningSince: null,
     timezone: tz,
     conversationId: params.conversationId,
     enabled: 1,
@@ -150,18 +159,92 @@ export function deleteReminder(id: string): boolean {
   return changes > 0;
 }
 
+export function clearRunningFlag(id: string): void {
+  db.update(reminders)
+    .set({ runningSince: null, updatedAt: new Date() })
+    .where(eq(reminders.id, id))
+    .run();
+}
+
 export function checkDueReminders(): void {
   const now = new Date();
+
+  // Recover from crashes: release stale run locks.
+  const staleCutoff = new Date(now.getTime() - STALE_RUN_MS);
+  db.update(reminders)
+    .set({ runningSince: null })
+    .where(
+      and(
+        sql`${reminders.runningSince} IS NOT NULL`,
+        lt(reminders.runningSince, staleCutoff),
+      ),
+    )
+    .run();
+
   const due = db
     .select()
     .from(reminders)
-    .where(and(eq(reminders.enabled, 1), lte(reminders.nextRunAt, now)))
+    .where(
+      and(
+        eq(reminders.enabled, 1),
+        lte(reminders.nextRunAt, now),
+        isNull(reminders.runningSince),
+      ),
+    )
     .all();
 
   if (due.length === 0) return;
 
+  // Conversations that already have a running veille — we can't enqueue a
+  // second one because they would corrupt the shared SDK session.
+  const dueConvIds = Array.from(new Set(due.map((r) => r.conversationId)));
+  const busyConvs = new Set<string>(
+    db
+      .select({ conversationId: reminders.conversationId })
+      .from(reminders)
+      .where(
+        and(
+          eq(reminders.kind, "agent"),
+          sql`${reminders.runningSince} IS NOT NULL`,
+          inArray(reminders.conversationId, dueConvIds),
+        ),
+      )
+      .all()
+      .map((r) => r.conversationId),
+  );
+
+  const agentRuns: typeof due = [];
+
   db.transaction((tx) => {
     for (const reminder of due) {
+      if (reminder.kind === "agent") {
+        if (busyConvs.has(reminder.conversationId)) {
+          // Leave nextRunAt untouched so the next tick retries.
+          continue;
+        }
+        busyConvs.add(reminder.conversationId);
+
+        tx.update(reminders)
+          .set({
+            runningSince: now,
+            lastRunAt: now,
+            updatedAt: now,
+            ...(reminder.scheduleType === "recurring" && reminder.cronExpr
+              ? {
+                  nextRunAt: computeNextRun(
+                    reminder.cronExpr,
+                    reminder.timezone,
+                  ),
+                }
+              : { enabled: 0 }),
+          })
+          .where(eq(reminders.id, reminder.id))
+          .run();
+
+        agentRuns.push(reminder);
+        continue;
+      }
+
       tx.insert(messages)
         .values({
           id: crypto.randomUUID(),
@@ -184,7 +267,6 @@ export function checkDueReminders(): void {
           .where(eq(reminders.id, reminder.id))
           .run();
       } else {
-        // One-time: disable after firing
         tx.update(reminders)
           .set({ enabled: 0, lastRunAt: now, updatedAt: now })
           .where(eq(reminders.id, reminder.id))
@@ -192,4 +274,17 @@ export function checkDueReminders(): void {
       }
     }
   });
+
+  // IMPORTANT: agent runs kick off AFTER the transaction commits.
+  // Never await or call runScheduledAgent inside the tx callback —
+  // better-sqlite3 transactions are synchronous; async work would
+  // hold the transaction open or fire before commit.
+  if (agentRuns.length > 0) {
+    void (async () => {
+      const { runScheduledAgent } = await import("@/lib/scheduled-agent");
+      await Promise.allSettled(
+        agentRuns.map((r) => runScheduledAgent(toApiReminder(r))),
+      );
+    })();
+  }
 }

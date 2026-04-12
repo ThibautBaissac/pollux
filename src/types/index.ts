@@ -28,11 +28,13 @@ export interface Reminder {
   id: string;
   name: string;
   message: string;
+  kind: "notify" | "agent";
   scheduleType: "once" | "recurring";
   cronExpr: string | null;
   scheduledAt: string | null;
   nextRunAt: string;
   lastRunAt: string | null;
+  runningSince: string | null;
   timezone: string;
   conversationId: string;
   enabled: boolean;

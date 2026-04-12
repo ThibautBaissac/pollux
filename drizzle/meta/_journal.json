@@ -22,6 +22,13 @@
       "when": 1775826598190,
       "tag": "0002_motionless_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1775982559578,
+      "tag": "0003_add_reminder_kind",
+      "breakpoints": true
     }
   ]
 }

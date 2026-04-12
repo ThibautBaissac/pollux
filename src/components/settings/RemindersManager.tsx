@@ -29,6 +29,7 @@ export function RemindersManager() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  const [kind, setKind] = useState<"notify" | "agent">("notify");
   const [scheduleType, setScheduleType] = useState<"once" | "recurring">(
     "recurring",
   );
@@ -74,6 +75,7 @@ export function RemindersManager() {
       const body: Record<string, unknown> = {
         name: name.trim(),
         message: message.trim(),
+        kind,
         scheduleType,
         timezone,
         conversationId,
@@ -97,6 +99,7 @@ export function RemindersManager() {
       setReminders((prev) => [...prev, data]);
       setName("");
       setMessage("");
+      setKind("notify");
       setCronExpr("");
       setScheduledAt("");
       setShowForm(false);
@@ -162,9 +165,25 @@ export function RemindersManager() {
                 className="flex items-center justify-between rounded-lg border border-border bg-bg-tertiary px-3 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <span className="text-sm font-medium text-text-primary">
-                    {r.name}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-text-primary">
+                      {r.name}
+                    </span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
+                        r.kind === "agent"
+                          ? "bg-accent/20 text-accent"
+                          : "bg-bg-secondary text-text-muted"
+                      }`}
+                    >
+                      {r.kind === "agent" ? "veille" : "notify"}
+                    </span>
+                    {r.runningSince && (
+                      <span className="text-[10px] uppercase tracking-wide text-text-muted">
+                        running…
+                      </span>
+                    )}
+                  </div>
                   <p className="truncate text-xs text-text-muted">
                     {scheduleLabel(r)}
                   </p>
@@ -221,14 +240,42 @@ export function RemindersManager() {
             className={`w-full ${INPUT_CLASS}`}
           />
 
+          <div className="flex items-center gap-3 text-xs text-text-secondary">
+            {(
+              [
+                { value: "notify", label: "Notification" },
+                { value: "agent", label: "Veille (agent)" },
+              ] as const
+            ).map((opt) => (
+              <label key={opt.value} className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="reminder-kind"
+                  value={opt.value}
+                  checked={kind === opt.value}
+                  onChange={() => {
+                    setKind(opt.value);
+                    setError("");
+                  }}
+                  className="accent-accent"
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+
           <textarea
             value={message}
             onChange={(e) => {
               setMessage(e.target.value);
               setError("");
             }}
-            placeholder="Message shown when the reminder fires"
-            rows={2}
+            placeholder={
+              kind === "agent"
+                ? "Prompt — sent to Pollux as if you typed it in the conversation"
+                : "Message shown when the reminder fires"
+            }
+            rows={kind === "agent" ? 4 : 2}
             disabled={creating}
             className={`w-full ${INPUT_CLASS}`}
           />

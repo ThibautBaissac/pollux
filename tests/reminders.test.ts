@@ -28,6 +28,10 @@ describe("reminders", () => {
   async function loadModule() {
     vi.resetModules();
     vi.doMock("@/lib/db", () => ({ db: testDb.db }));
+    // Stub the runner: tests in this file assert on DB side effects, not agent execution.
+    vi.doMock("@/lib/scheduled-agent", () => ({
+      runScheduledAgent: vi.fn(async () => {}),
+    }));
     return import("@/lib/reminders");
   }
 
@@ -330,6 +334,150 @@ describe("reminders", () => {
       .where(eq(messages.conversationId, convId))
       .all();
     expect(msgs).toHaveLength(0);
+  });
+
+  // --- kind routing ---
+
+  it("does not insert a static message for kind='agent' reminders", async () => {
+    const { createReminder, checkDueReminders, getReminder } =
+      await loadModule();
+    const convId = seedConversation();
+
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const r = createReminder({
+      name: "Veille",
+      message: "Research AI news",
+      kind: "agent",
+      scheduleType: "once",
+      scheduledAt: past,
+      conversationId: convId,
+    });
+
+    checkDueReminders();
+
+    const msgs = testDb.db
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, convId))
+      .all();
+    expect(msgs.filter((m) => m.content.startsWith("⏰"))).toHaveLength(0);
+
+    const updated = getReminder(r.id);
+    expect(updated!.runningSince).not.toBeNull();
+    expect(updated!.lastRunAt).not.toBeNull();
+  });
+
+  it("delegates kind='agent' reminders to runScheduledAgent", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/db", () => ({ db: testDb.db }));
+    const spy = vi.fn(async () => {});
+    vi.doMock("@/lib/scheduled-agent", () => ({
+      runScheduledAgent: spy,
+    }));
+    const { createReminder, checkDueReminders } = await import(
+      "@/lib/reminders"
+    );
+
+    const convId = seedConversation();
+    const past = new Date(Date.now() - 60_000).toISOString();
+    createReminder({
+      name: "Veille",
+      message: "Do research",
+      kind: "agent",
+      scheduleType: "once",
+      scheduledAt: past,
+      conversationId: convId,
+    });
+
+    checkDueReminders();
+
+    // Microtask flush so the dynamic import + Promise.allSettled run.
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const firstCall = spy.mock.calls[0] as unknown as [{ kind: string }];
+    expect(firstCall[0].kind).toBe("agent");
+  });
+
+  // --- runningSince lock ---
+
+  it("clears stale runningSince (older than 10 min) on next tick", async () => {
+    const { checkDueReminders, getReminder } = await loadModule();
+    const convId = seedConversation();
+
+    const staleTime = new Date(Date.now() - 11 * 60 * 1000);
+    const past = new Date(Date.now() - 60_000);
+    testDb.db
+      .insert(reminders)
+      .values({
+        id: "stale-1",
+        name: "Stale veille",
+        message: "x",
+        kind: "agent",
+        scheduleType: "recurring",
+        cronExpr: "* * * * *",
+        nextRunAt: past,
+        runningSince: staleTime,
+        timezone: "UTC",
+        conversationId: convId,
+        createdAt: staleTime,
+        updatedAt: staleTime,
+      })
+      .run();
+
+    checkDueReminders();
+
+    const updated = getReminder("stale-1");
+    expect(updated!.runningSince).not.toBeNull();
+    const runningTs = new Date(updated!.runningSince!).getTime();
+    expect(runningTs).toBeGreaterThan(staleTime.getTime());
+  });
+
+  it("skips agent reminder when another is already running on same conversation", async () => {
+    const { checkDueReminders, getReminder } = await loadModule();
+    const convId = seedConversation();
+
+    const past = new Date(Date.now() - 60_000);
+    const earlier = new Date(Date.now() - 30_000);
+    testDb.db
+      .insert(reminders)
+      .values({
+        id: "busy-1",
+        name: "Busy",
+        message: "x",
+        kind: "agent",
+        scheduleType: "recurring",
+        cronExpr: "* * * * *",
+        nextRunAt: new Date(Date.now() + 60_000),
+        runningSince: earlier,
+        timezone: "UTC",
+        conversationId: convId,
+        createdAt: earlier,
+        updatedAt: earlier,
+      })
+      .run();
+    testDb.db
+      .insert(reminders)
+      .values({
+        id: "queued-1",
+        name: "Queued",
+        message: "y",
+        kind: "agent",
+        scheduleType: "recurring",
+        cronExpr: "* * * * *",
+        nextRunAt: past,
+        timezone: "UTC",
+        conversationId: convId,
+        createdAt: past,
+        updatedAt: past,
+      })
+      .run();
+
+    checkDueReminders();
+
+    const queued = getReminder("queued-1");
+    expect(queued!.runningSince).toBeNull();
   });
 
   // --- cascade delete ---

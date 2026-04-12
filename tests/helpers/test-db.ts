@@ -1,25 +1,17 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "fs";
 import { tmpdir } from "os";
+import { fileURLToPath } from "url";
 import { join } from "path";
 
 import * as schema from "@/lib/db/schema";
 
-const MIGRATIONS = [
-  readFileSync(
-    new URL("../../drizzle/0000_rare_wolf_cub.sql", import.meta.url),
-    "utf-8",
-  ),
-  readFileSync(
-    new URL("../../drizzle/0001_overrated_iron_patriot.sql", import.meta.url),
-    "utf-8",
-  ),
-  readFileSync(
-    new URL("../../drizzle/0002_motionless_microbe.sql", import.meta.url),
-    "utf-8",
-  ),
-];
+const drizzleDir = fileURLToPath(new URL("../../drizzle/", import.meta.url));
+const MIGRATIONS = readdirSync(drizzleDir)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()
+  .map((f) => readFileSync(join(drizzleDir, f), "utf-8"));
 
 export interface TestDbContext {
   rootDir: string;

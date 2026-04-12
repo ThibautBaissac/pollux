@@ -47,6 +47,7 @@ export async function runScheduledAgent(reminder: Reminder): Promise<void> {
       memoryContent,
       model,
       sdkSessionId: conv.sdkSessionId ?? undefined,
+      conversationId: convId,
       abortController,
     });
 

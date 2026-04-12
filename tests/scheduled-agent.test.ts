@@ -188,4 +188,28 @@ describe("scheduled agent runner", () => {
     expect(msgs).toHaveLength(2);
     expect(msgs[1].content).toContain("no output");
   });
+
+  it("passes the reminder conversation id into the agent context", async () => {
+    const convId = seedConversation("conv-ctx");
+    const reminder = seedReminder(convId);
+    const startAgent = vi.fn().mockImplementation(
+      () =>
+        (async function* () {
+          yield { type: "result", total_cost_usd: 0, num_turns: 0 };
+        })(),
+    );
+
+    vi.doMock("@/lib/agent", () => ({
+      startAgent,
+    }));
+
+    const { runScheduledAgent } = await loadModule();
+    await runScheduledAgent(reminder);
+
+    expect(startAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-ctx",
+      }),
+    );
+  });
 });

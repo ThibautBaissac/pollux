@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import type { Reminder, Conversation } from "@/types";
+import { useEffect, useState } from "react";
+import type { Conversation, Reminder } from "@/types";
 
 const INPUT_CLASS =
   "rounded-lg border border-border bg-bg-secondary px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none disabled:opacity-50";
@@ -18,6 +18,26 @@ function nextRunLabel(r: Reminder): string {
   return new Date(r.nextRunAt).toLocaleString();
 }
 
+function defaultTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function sortReminders(items: Reminder[]): Reminder[] {
+  return [...items].sort(
+    (a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime(),
+  );
+}
+
+function toDatetimeLocal(value: string | null): string {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function RemindersManager() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -26,7 +46,8 @@ export function RemindersManager() {
   const [error, setError] = useState("");
 
   const [showForm, setShowForm] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [savingForm, setSavingForm] = useState(false);
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [kind, setKind] = useState<"notify" | "agent">("notify");
@@ -35,10 +56,11 @@ export function RemindersManager() {
   );
   const [cronExpr, setCronExpr] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [timezone, setTimezone] = useState(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
-  );
+  const [timezone, setTimezone] = useState(() => defaultTimezone());
   const [conversationId, setConversationId] = useState("");
+
+  const isEditing = editingId !== null;
+  const hasConversations = conversations.length > 0;
 
   useEffect(() => {
     Promise.all([
@@ -46,7 +68,7 @@ export function RemindersManager() {
       fetch("/api/conversations").then((r) => (r.ok ? r.json() : [])),
     ])
       .then(([remData, convData]) => {
-        setReminders(remData);
+        setReminders(sortReminders(remData));
         setConversations(convData);
         if (convData.length > 0) {
           setConversationId(convData[0].id);
@@ -55,6 +77,48 @@ export function RemindersManager() {
       .catch(() => setError("Failed to load reminders"))
       .finally(() => setLoading(false));
   }, []);
+
+  function fallbackConversationId(): string {
+    return conversations[0]?.id ?? "";
+  }
+
+  function resetForm(nextConversationId = fallbackConversationId()) {
+    setEditingId(null);
+    setName("");
+    setMessage("");
+    setKind("notify");
+    setScheduleType("recurring");
+    setCronExpr("");
+    setScheduledAt("");
+    setTimezone(defaultTimezone());
+    setConversationId(nextConversationId);
+  }
+
+  function closeForm(nextConversationId = fallbackConversationId()) {
+    resetForm(nextConversationId);
+    setShowForm(false);
+    setError("");
+  }
+
+  function openCreateForm() {
+    resetForm(fallbackConversationId());
+    setShowForm(true);
+    setError("");
+  }
+
+  function openEditForm(reminder: Reminder) {
+    setEditingId(reminder.id);
+    setName(reminder.name);
+    setMessage(reminder.message);
+    setKind(reminder.kind);
+    setScheduleType(reminder.scheduleType);
+    setCronExpr(reminder.cronExpr ?? "");
+    setScheduledAt(toDatetimeLocal(reminder.scheduledAt));
+    setTimezone(reminder.timezone);
+    setConversationId(reminder.conversationId);
+    setShowForm(true);
+    setError("");
+  }
 
   function markBusy(id: string) {
     setBusyIds((prev) => new Set(prev).add(id));
@@ -68,45 +132,103 @@ export function RemindersManager() {
     });
   }
 
-  async function handleCreate() {
-    setCreating(true);
-    setError("");
-    try {
-      const body: Record<string, unknown> = {
-        name: name.trim(),
-        message: message.trim(),
-        kind,
-        scheduleType,
-        timezone,
-        conversationId,
-      };
-      if (scheduleType === "recurring") {
-        body.cronExpr = cronExpr.trim();
-      } else {
-        body.scheduledAt = new Date(scheduledAt).toISOString();
-      }
+  function upsertReminder(updated: Reminder) {
+    setReminders((prev) =>
+      sortReminders(
+        prev.some((item) => item.id === updated.id)
+          ? prev.map((item) => (item.id === updated.id ? updated : item))
+          : [...prev, updated],
+      ),
+    );
+  }
 
-      const res = await fetch("/api/reminders", {
-        method: "POST",
+  function buildFormPayload(): Record<string, unknown> | null {
+    const trimmedName = name.trim();
+    const trimmedMessage = message.trim();
+    const trimmedTimezone = timezone.trim();
+
+    if (!trimmedName || !trimmedMessage) {
+      setError("Name and message are required");
+      return null;
+    }
+
+    if (!trimmedTimezone) {
+      setError("Timezone is required");
+      return null;
+    }
+
+    if (!conversationId) {
+      setError("Conversation is required");
+      return null;
+    }
+
+    const body: Record<string, unknown> = {
+      name: trimmedName,
+      message: trimmedMessage,
+      kind,
+      scheduleType,
+      timezone: trimmedTimezone,
+      conversationId,
+    };
+
+    if (scheduleType === "recurring") {
+      const trimmedCronExpr = cronExpr.trim();
+      if (!trimmedCronExpr) {
+        setError("Cron expression is required");
+        return null;
+      }
+      body.cronExpr = trimmedCronExpr;
+      return body;
+    }
+
+    if (!scheduledAt) {
+      setError("Date and time are required");
+      return null;
+    }
+
+    const scheduledDate = new Date(scheduledAt);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      setError("Date and time are invalid");
+      return null;
+    }
+
+    body.scheduledAt = scheduledDate.toISOString();
+    return body;
+  }
+
+  async function handleSubmit() {
+    setSavingForm(true);
+    setError("");
+
+    try {
+      const body = buildFormPayload();
+      if (!body) return;
+
+      const isEdit = editingId !== null;
+      const url = isEdit ? `/api/reminders/${editingId}` : "/api/reminders";
+      const method = isEdit ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const data = await res.json();
+
       if (!res.ok) {
-        setError(data.error || "Failed to create reminder");
+        setError(
+          data.error ||
+            `Failed to ${isEdit ? "update" : "create"} reminder`,
+        );
         return;
       }
-      setReminders((prev) => [...prev, data]);
-      setName("");
-      setMessage("");
-      setKind("notify");
-      setCronExpr("");
-      setScheduledAt("");
-      setShowForm(false);
+
+      upsertReminder(data);
+      closeForm(conversationId || fallbackConversationId());
     } catch {
       setError("Network error");
     } finally {
-      setCreating(false);
+      setSavingForm(false);
     }
   }
 
@@ -121,7 +243,7 @@ export function RemindersManager() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)));
+        upsertReminder(updated);
       } else {
         setError("Failed to update reminder");
       }
@@ -139,6 +261,9 @@ export function RemindersManager() {
       const res = await fetch(`/api/reminders/${id}`, { method: "DELETE" });
       if (res.ok) {
         setReminders((prev) => prev.filter((r) => r.id !== id));
+        if (editingId === id) {
+          closeForm(fallbackConversationId());
+        }
       } else {
         setError("Failed to delete reminder");
       }
@@ -152,6 +277,14 @@ export function RemindersManager() {
   if (loading) {
     return <p className="text-sm text-text-muted">Loading...</p>;
   }
+
+  const canSubmit =
+    !savingForm &&
+    !!name.trim() &&
+    !!message.trim() &&
+    !!timezone.trim() &&
+    !!conversationId &&
+    (scheduleType === "recurring" ? !!cronExpr.trim() : !!scheduledAt);
 
   return (
     <div className="space-y-3">
@@ -180,13 +313,14 @@ export function RemindersManager() {
                     </span>
                     {r.runningSince && (
                       <span className="text-[10px] uppercase tracking-wide text-text-muted">
-                        running…
+                        running...
                       </span>
                     )}
                   </div>
                   <p className="truncate text-xs text-text-muted">
                     {scheduleLabel(r)}
                   </p>
+                  <p className="truncate text-xs text-text-muted">{r.message}</p>
                   <p className="text-xs text-text-muted">
                     Next: {nextRunLabel(r)}
                     {r.lastRunAt && (
@@ -198,6 +332,13 @@ export function RemindersManager() {
                   </p>
                 </div>
                 <div className="ml-3 flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => openEditForm(r)}
+                    disabled={busy || savingForm}
+                    className="text-xs text-text-muted hover:text-text-primary disabled:opacity-50"
+                  >
+                    Edit
+                  </button>
                   <button
                     onClick={() => handleToggle(r.id, !r.enabled)}
                     disabled={busy}
@@ -227,7 +368,18 @@ export function RemindersManager() {
       )}
 
       {showForm ? (
-        <div className="space-y-2 rounded-lg border border-border bg-bg-tertiary p-3">
+        <div className="space-y-3 rounded-lg border border-border bg-bg-tertiary p-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-text-muted">
+              {isEditing ? "Edit reminder" : "New reminder"}
+            </p>
+            <p className="text-sm text-text-secondary">
+              {isEditing
+                ? "Update the reminder content, schedule, destination, or status."
+                : "Create a scheduled reminder for one conversation."}
+            </p>
+          </div>
+
           <input
             type="text"
             value={name}
@@ -236,7 +388,7 @@ export function RemindersManager() {
               setError("");
             }}
             placeholder="Reminder name"
-            disabled={creating}
+            disabled={savingForm}
             className={`w-full ${INPUT_CLASS}`}
           />
 
@@ -276,54 +428,41 @@ export function RemindersManager() {
                 : "Message shown when the reminder fires"
             }
             rows={kind === "agent" ? 4 : 2}
-            disabled={creating}
+            disabled={savingForm}
             className={`w-full ${INPUT_CLASS}`}
           />
 
           <div className="flex items-center gap-3 text-xs text-text-secondary">
-            {(["recurring", "once"] as const).map((t) => (
-              <label key={t} className="flex items-center gap-1">
+            {(["recurring", "once"] as const).map((type) => (
+              <label key={type} className="flex items-center gap-1">
                 <input
                   type="radio"
                   name="schedule-type"
-                  value={t}
-                  checked={scheduleType === t}
+                  value={type}
+                  checked={scheduleType === type}
                   onChange={() => {
-                    setScheduleType(t);
+                    setScheduleType(type);
                     setError("");
                   }}
                   className="accent-accent"
                 />
-                {t}
+                {type}
               </label>
             ))}
           </div>
 
           {scheduleType === "recurring" ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={cronExpr}
-                onChange={(e) => {
-                  setCronExpr(e.target.value);
-                  setError("");
-                }}
-                placeholder="Cron (e.g. 0 15 * * 5 = Fri 3 PM)"
-                disabled={creating}
-                className={`flex-1 ${INPUT_CLASS}`}
-              />
-              <input
-                type="text"
-                value={timezone}
-                onChange={(e) => {
-                  setTimezone(e.target.value);
-                  setError("");
-                }}
-                placeholder="Timezone"
-                disabled={creating}
-                className={`w-48 ${INPUT_CLASS}`}
-              />
-            </div>
+            <input
+              type="text"
+              value={cronExpr}
+              onChange={(e) => {
+                setCronExpr(e.target.value);
+                setError("");
+              }}
+              placeholder="Cron (e.g. 0 15 * * 5 = Fri 3 PM)"
+              disabled={savingForm}
+              className={`w-full ${INPUT_CLASS}`}
+            />
           ) : (
             <input
               type="datetime-local"
@@ -332,38 +471,58 @@ export function RemindersManager() {
                 setScheduledAt(e.target.value);
                 setError("");
               }}
-              disabled={creating}
+              disabled={savingForm}
               className={`w-full ${INPUT_CLASS}`}
             />
           )}
 
+          <input
+            type="text"
+            value={timezone}
+            onChange={(e) => {
+              setTimezone(e.target.value);
+              setError("");
+            }}
+            placeholder="Timezone (e.g. Europe/Paris)"
+            disabled={savingForm}
+            className={`w-full ${INPUT_CLASS}`}
+          />
+
           <select
             value={conversationId}
-            onChange={(e) => setConversationId(e.target.value)}
-            disabled={creating}
+            onChange={(e) => {
+              setConversationId(e.target.value);
+              setError("");
+            }}
+            disabled={savingForm || !hasConversations}
             className={`w-full ${INPUT_CLASS}`}
           >
-            {conversations.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title}
-              </option>
-            ))}
+            {hasConversations ? (
+              conversations.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))
+            ) : (
+              <option value="">No conversations available</option>
+            )}
           </select>
 
           <div className="flex gap-2">
             <button
-              onClick={handleCreate}
-              disabled={creating || !name.trim() || !message.trim()}
+              onClick={handleSubmit}
+              disabled={!canSubmit}
               className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
-              {creating ? "Saving..." : "Create"}
+              {savingForm
+                ? "Saving..."
+                : isEditing
+                  ? "Save changes"
+                  : "Create"}
             </button>
             <button
-              onClick={() => {
-                setShowForm(false);
-                setError("");
-              }}
-              disabled={creating}
+              onClick={() => closeForm(conversationId || fallbackConversationId())}
+              disabled={savingForm}
               className="rounded-lg border border-border px-4 py-1.5 text-sm text-text-secondary hover:bg-bg-hover disabled:opacity-50"
             >
               Cancel
@@ -372,7 +531,7 @@ export function RemindersManager() {
         </div>
       ) : (
         <button
-          onClick={() => setShowForm(true)}
+          onClick={openCreateForm}
           className="w-full rounded-lg border border-border bg-bg-tertiary px-4 py-2 text-sm text-text-primary hover:bg-bg-hover"
         >
           Add reminder

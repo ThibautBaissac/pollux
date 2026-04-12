@@ -41,6 +41,7 @@ export function formatSchedule(r: Reminder): string {
 export const REMINDER_VALIDATION_ERRORS = {
   invalidCron: "Invalid cron expression",
   invalidScheduledAt: "Invalid scheduledAt",
+  invalidTimezone: "Invalid timezone",
   cronRequired: "cronExpr required for recurring",
   scheduledAtRequired: "scheduledAt required for once",
 } as const;
@@ -59,6 +60,87 @@ export function validateCronExpr(expr: string): string | null {
   }
 }
 
+export function validateTimezone(timezone: string): string | null {
+  if (!timezone.trim()) return REMINDER_VALIDATION_ERRORS.invalidTimezone;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return null;
+  } catch {
+    return REMINDER_VALIDATION_ERRORS.invalidTimezone;
+  }
+}
+
+export interface ReminderCreateParams {
+  name: string;
+  message: string;
+  kind?: "notify" | "agent";
+  scheduleType: "once" | "recurring";
+  cronExpr?: string;
+  scheduledAt?: string;
+  timezone?: string;
+  conversationId: string;
+}
+
+export interface ReminderUpdateFields {
+  name?: string;
+  message?: string;
+  kind?: "notify" | "agent";
+  scheduleType?: "once" | "recurring";
+  cronExpr?: string;
+  scheduledAt?: string;
+  timezone?: string;
+  conversationId?: string;
+  enabled?: boolean;
+}
+
+function parseScheduledAt(value: string): Date {
+  const scheduledAt = new Date(value);
+  if (isNaN(scheduledAt.getTime())) {
+    throw new Error(REMINDER_VALIDATION_ERRORS.invalidScheduledAt);
+  }
+  return scheduledAt;
+}
+
+function resolveReminderSchedule(params: {
+  scheduleType: "once" | "recurring";
+  cronExpr?: string | null;
+  scheduledAt?: string | null;
+  timezone?: string;
+}) {
+  const timezone = (params.timezone ?? "UTC").trim();
+  const timezoneError = validateTimezone(timezone);
+  if (timezoneError) throw new Error(timezoneError);
+
+  if (params.scheduleType === "recurring") {
+    const cronExpr = params.cronExpr?.trim();
+    if (!cronExpr) {
+      throw new Error(REMINDER_VALIDATION_ERRORS.cronRequired);
+    }
+    const cronError = validateCronExpr(cronExpr);
+    if (cronError) throw new Error(cronError);
+
+    return {
+      cronExpr,
+      scheduledAt: null,
+      nextRunAt: computeNextRun(cronExpr, timezone),
+      timezone,
+    };
+  }
+
+  const scheduledAtValue = params.scheduledAt?.trim();
+  if (!scheduledAtValue) {
+    throw new Error(REMINDER_VALIDATION_ERRORS.scheduledAtRequired);
+  }
+
+  const scheduledAt = parseScheduledAt(scheduledAtValue);
+  return {
+    cronExpr: null,
+    scheduledAt,
+    nextRunAt: scheduledAt,
+    timezone,
+  };
+}
+
 export function listReminders(): Reminder[] {
   const rows = db
     .select()
@@ -73,42 +155,16 @@ export function getReminder(id: string): Reminder | null {
   return row ? toApiReminder(row) : null;
 }
 
-export function createReminder(params: {
-  name: string;
-  message: string;
-  kind?: "notify" | "agent";
-  scheduleType: "once" | "recurring";
-  cronExpr?: string;
-  scheduledAt?: string;
-  timezone?: string;
-  conversationId: string;
-}): Reminder {
-  const tz = params.timezone ?? "UTC";
+export function createReminder(params: ReminderCreateParams): Reminder {
   const kind = params.kind ?? "notify";
   const now = new Date();
-
-  let nextRunAt: Date;
-  let cronExpr: string | null = null;
-  let scheduledAt: Date | null = null;
-
-  if (params.scheduleType === "recurring") {
-    if (!params.cronExpr) {
-      throw new Error(REMINDER_VALIDATION_ERRORS.cronRequired);
-    }
-    const err = validateCronExpr(params.cronExpr);
-    if (err) throw new Error(err);
-    cronExpr = params.cronExpr;
-    nextRunAt = computeNextRun(cronExpr, tz);
-  } else {
-    if (!params.scheduledAt) {
-      throw new Error(REMINDER_VALIDATION_ERRORS.scheduledAtRequired);
-    }
-    scheduledAt = new Date(params.scheduledAt);
-    if (isNaN(scheduledAt.getTime())) {
-      throw new Error(REMINDER_VALIDATION_ERRORS.invalidScheduledAt);
-    }
-    nextRunAt = scheduledAt;
-  }
+  const { cronExpr, scheduledAt, nextRunAt, timezone } =
+    resolveReminderSchedule({
+      scheduleType: params.scheduleType,
+      cronExpr: params.cronExpr,
+      scheduledAt: params.scheduledAt,
+      timezone: params.timezone,
+    });
 
   const id = crypto.randomUUID();
 
@@ -122,7 +178,7 @@ export function createReminder(params: {
       cronExpr,
       scheduledAt,
       nextRunAt,
-      timezone: tz,
+      timezone,
       conversationId: params.conversationId,
       createdAt: now,
       updatedAt: now,
@@ -140,7 +196,7 @@ export function createReminder(params: {
     nextRunAt,
     lastRunAt: null,
     runningSince: null,
-    timezone: tz,
+    timezone,
     conversationId: params.conversationId,
     enabled: 1,
     createdAt: now,
@@ -148,15 +204,38 @@ export function createReminder(params: {
   });
 }
 
-export function updateReminder(
-  id: string,
-  fields: { name?: string; message?: string; enabled?: boolean },
-): Reminder | null {
+export function updateReminder(id: string, fields: ReminderUpdateFields): Reminder | null {
+  const existing = db.select().from(reminders).where(eq(reminders.id, id)).get();
+  if (!existing) return null;
+
   const now = new Date();
   const updates: Partial<typeof reminders.$inferInsert> = { updatedAt: now };
   if (fields.name !== undefined) updates.name = fields.name;
   if (fields.message !== undefined) updates.message = fields.message;
+  if (fields.kind !== undefined) updates.kind = fields.kind;
+  if (fields.conversationId !== undefined) updates.conversationId = fields.conversationId;
   if (fields.enabled !== undefined) updates.enabled = fields.enabled ? 1 : 0;
+
+  if (
+    fields.scheduleType !== undefined ||
+    fields.cronExpr !== undefined ||
+    fields.scheduledAt !== undefined ||
+    fields.timezone !== undefined
+  ) {
+    const resolved = resolveReminderSchedule({
+      scheduleType: fields.scheduleType ?? existing.scheduleType,
+      cronExpr: fields.cronExpr ?? existing.cronExpr,
+      scheduledAt:
+        fields.scheduledAt ?? existing.scheduledAt?.toISOString() ?? null,
+      timezone: fields.timezone ?? existing.timezone,
+    });
+
+    updates.scheduleType = fields.scheduleType ?? existing.scheduleType;
+    updates.cronExpr = resolved.cronExpr;
+    updates.scheduledAt = resolved.scheduledAt;
+    updates.nextRunAt = resolved.nextRunAt;
+    updates.timezone = resolved.timezone;
+  }
 
   const { changes } = db
     .update(reminders)

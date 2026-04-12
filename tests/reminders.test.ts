@@ -185,6 +185,147 @@ describe("reminders", () => {
     expect(updated!.enabled).toBe(false);
   });
 
+  it("recomputes a recurring schedule when cron or timezone changes", async () => {
+    const { createReminder, updateReminder } = await loadModule();
+    const convId = seedConversation();
+
+    const r = createReminder({
+      name: "Morning brief",
+      message: "Check updates",
+      scheduleType: "recurring",
+      cronExpr: "0 9 * * *",
+      timezone: "UTC",
+      conversationId: convId,
+    });
+
+    const updated = updateReminder(r.id, {
+      cronExpr: "30 14 * * 1",
+      timezone: "Europe/Paris",
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.scheduleType).toBe("recurring");
+    expect(updated!.cronExpr).toBe("30 14 * * 1");
+    expect(updated!.scheduledAt).toBeNull();
+    expect(updated!.timezone).toBe("Europe/Paris");
+    expect(updated!.nextRunAt).not.toBe(r.nextRunAt);
+  });
+
+  it("switches a recurring reminder to a one-time reminder", async () => {
+    const { createReminder, updateReminder } = await loadModule();
+    const convId = seedConversation();
+    const scheduledAt = new Date(Date.now() + 172_800_000).toISOString();
+
+    const r = createReminder({
+      name: "Weekly sync",
+      message: "Prepare notes",
+      scheduleType: "recurring",
+      cronExpr: "0 9 * * 1",
+      conversationId: convId,
+    });
+
+    const updated = updateReminder(r.id, {
+      scheduleType: "once",
+      scheduledAt,
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.scheduleType).toBe("once");
+    expect(updated!.cronExpr).toBeNull();
+    expect(updated!.scheduledAt).not.toBeNull();
+
+    const updatedSec = Math.floor(new Date(updated!.scheduledAt!).getTime() / 1000);
+    const expectedSec = Math.floor(new Date(scheduledAt).getTime() / 1000);
+    const nextRunSec = Math.floor(new Date(updated!.nextRunAt).getTime() / 1000);
+    expect(updatedSec).toBe(expectedSec);
+    expect(nextRunSec).toBe(expectedSec);
+  });
+
+  it("switches a one-time reminder to a recurring reminder", async () => {
+    const { createReminder, updateReminder } = await loadModule();
+    const convId = seedConversation();
+    const scheduledAt = new Date(Date.now() + 86_400_000).toISOString();
+
+    const r = createReminder({
+      name: "One-off check-in",
+      message: "Ping me later",
+      scheduleType: "once",
+      scheduledAt,
+      conversationId: convId,
+    });
+
+    const updated = updateReminder(r.id, {
+      scheduleType: "recurring",
+      cronExpr: "0 8 * * 1-5",
+      timezone: "Europe/Paris",
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.scheduleType).toBe("recurring");
+    expect(updated!.cronExpr).toBe("0 8 * * 1-5");
+    expect(updated!.scheduledAt).toBeNull();
+    expect(updated!.timezone).toBe("Europe/Paris");
+    expect(updated!.nextRunAt).not.toBe(r.nextRunAt);
+  });
+
+  it("updates reminder kind and destination conversation", async () => {
+    const { createReminder, updateReminder } = await loadModule();
+    const convId = seedConversation();
+    const otherConvId = seedConversation("conv-2");
+
+    const r = createReminder({
+      name: "Status report",
+      message: "Summarize today",
+      scheduleType: "recurring",
+      cronExpr: "0 18 * * *",
+      conversationId: convId,
+    });
+
+    const updated = updateReminder(r.id, {
+      kind: "agent",
+      conversationId: otherConvId,
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated!.kind).toBe("agent");
+    expect(updated!.conversationId).toBe(otherConvId);
+  });
+
+  it("throws for invalid cron expression on update", async () => {
+    const { createReminder, updateReminder } = await loadModule();
+    const convId = seedConversation();
+
+    const r = createReminder({
+      name: "Bad cron",
+      message: "Oops",
+      scheduleType: "recurring",
+      cronExpr: "0 9 * * *",
+      conversationId: convId,
+    });
+
+    expect(() => updateReminder(r.id, { cronExpr: "not valid" })).toThrow(
+      "Invalid cron expression",
+    );
+  });
+
+  it("throws for invalid scheduledAt on update", async () => {
+    const { createReminder, updateReminder } = await loadModule();
+    const convId = seedConversation();
+    const scheduledAt = new Date(Date.now() + 86_400_000).toISOString();
+
+    const r = createReminder({
+      name: "Bad date",
+      message: "Oops",
+      scheduleType: "once",
+      scheduledAt,
+      conversationId: convId,
+    });
+
+    expect(() => updateReminder(r.id, { scheduledAt: "not-a-date" })).toThrow(
+      "Invalid scheduledAt",
+    );
+  });
+
   it("returns null when updating non-existent reminder", async () => {
     const { updateReminder } = await loadModule();
     expect(updateReminder("nonexistent", { name: "x" })).toBeNull();

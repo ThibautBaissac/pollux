@@ -151,6 +151,7 @@ export function createChatStream(params: ChatStreamParams): ReadableStream {
             memoryContent,
             model,
             sdkSessionId: currentSessionId,
+            conversationId: convId,
             abortController: controller,
           });
 

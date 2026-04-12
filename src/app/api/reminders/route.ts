@@ -5,6 +5,7 @@ import {
   listReminders,
   createReminder,
   SAFE_REMINDER_ERRORS,
+  type ReminderCreateParams,
 } from "@/lib/reminders";
 
 export async function GET() {
@@ -24,8 +25,16 @@ export async function POST(request: NextRequest) {
   const parsed = await readJsonObject(request);
   if (parsed.response) return parsed.response;
 
-  const { name, message, kind, scheduleType, cronExpr, scheduledAt, timezone, conversationId } =
-    parsed.data;
+  const {
+    name,
+    message,
+    kind,
+    scheduleType,
+    cronExpr,
+    scheduledAt,
+    timezone,
+    conversationId,
+  } = parsed.data;
 
   if (typeof name !== "string" || !name.trim()) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -82,16 +91,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const reminder = createReminder({
+    const params: ReminderCreateParams = {
       name: name.trim().slice(0, 200),
       message: message.trim().slice(0, 2000),
       kind: kind as "notify" | "agent" | undefined,
       scheduleType,
       cronExpr: cronExpr as string | undefined,
       scheduledAt: scheduledAt as string | undefined,
-      timezone: timezone as string | undefined,
-      conversationId,
-    });
+      timezone: typeof timezone === "string" ? timezone.trim() : undefined,
+      conversationId: conversationId.trim(),
+    };
+    const reminder = createReminder(params);
     return NextResponse.json(reminder, { status: 201 });
   } catch (err: unknown) {
     console.error("Failed to create reminder:", err);

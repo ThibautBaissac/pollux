@@ -23,6 +23,7 @@ describe("chat", () => {
       userMessage: string;
       memoryContent: string;
       sdkSessionId?: string;
+      conversationId?: string;
       abortController: AbortController;
     }) => AsyncIterable<unknown>;
   } = {}) {
@@ -225,6 +226,35 @@ describe("chat", () => {
     expect(startAgent).toHaveBeenCalledTimes(2);
     expect(startAgent.mock.calls[0][0].sdkSessionId).toBe("sdk-stale");
     expect(startAgent.mock.calls[1][0].sdkSessionId).toBeUndefined();
+  });
+
+  it("passes the current conversation id into the agent context", async () => {
+    const startAgent = vi.fn().mockImplementation(
+      () =>
+        (async function* () {
+          yield { type: "result", total_cost_usd: 0, num_turns: 0 };
+        })(),
+    );
+    const { createChatStream } = await loadChatModule({
+      startAgentImpl: startAgent,
+    });
+    seedConversation("conv-ctx");
+
+    await readStream(
+      createChatStream({
+        convId: "conv-ctx",
+        sdkSessionId: undefined,
+        title: "Reminder",
+        message: 'remind me to "go for a walk" today at 14:45 Paris time',
+        abortSignal: new AbortController().signal,
+      }),
+    );
+
+    expect(startAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-ctx",
+      }),
+    );
   });
 
   it("persists partial assistant output when the stream is aborted", async () => {

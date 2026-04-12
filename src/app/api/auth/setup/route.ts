@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { codes, hashes } = await generateRecoveryCodes();
-  storeRecoveryCodes(hashes);
+  const { codes, entries } = await generateRecoveryCodes();
+  storeRecoveryCodes(entries);
 
   await createSession();
 

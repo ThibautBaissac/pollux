@@ -33,6 +33,7 @@ export const sessions = sqliteTable("sessions", {
 export const recoveryCodes = sqliteTable("recovery_codes", {
   id: text("id").primaryKey(),
   codeHash: text("code_hash").notNull(),
+  lookupPrefix: text("lookup_prefix"),
   used: integer("used").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });

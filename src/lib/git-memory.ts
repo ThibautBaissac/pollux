@@ -1,32 +1,43 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { writeFileSync } from "fs";
 import { join } from "path";
 import { MEMORY_DIR } from "./memory";
 
 const TRACKED_FILES = ["profile.md", "knowledge.md"];
 
+function gitSilent(args: string[]): void {
+  execFileSync("git", ["-C", MEMORY_DIR, ...args], { stdio: "ignore" });
+}
+
+function gitCapture(args: string[]): string {
+  return execFileSync("git", ["-C", MEMORY_DIR, ...args], {
+    encoding: "utf-8",
+  });
+}
+
 export async function gitCommitMemory(
   timestamp: string,
 ): Promise<string | null> {
   try {
-    const status = execSync(
-      `git -C "${MEMORY_DIR}" status --porcelain ${TRACKED_FILES.join(" ")}`,
-      { encoding: "utf-8" },
-    ).trim();
+    const status = gitCapture([
+      "status",
+      "--porcelain",
+      ...TRACKED_FILES,
+    ]).trim();
 
     if (!status) return null;
 
     for (const f of TRACKED_FILES) {
-      execSync(`git -C "${MEMORY_DIR}" add "${f}"`, { stdio: "ignore" });
+      gitSilent(["add", f]);
     }
-    execSync(
-      `git -C "${MEMORY_DIR}" commit -m "dream: ${timestamp}" --author="pollux <pollux@local>"`,
-      { encoding: "utf-8" },
-    );
+    gitSilent([
+      "commit",
+      "-m",
+      `dream: ${timestamp}`,
+      "--author=pollux <pollux@local>",
+    ]);
 
-    return execSync(`git -C "${MEMORY_DIR}" rev-parse --short HEAD`, {
-      encoding: "utf-8",
-    }).trim();
+    return gitCapture(["rev-parse", "--short", "HEAD"]).trim();
   } catch (err) {
     console.error("git-memory: commit failed:", err);
     return null;
@@ -35,19 +46,19 @@ export async function gitCommitMemory(
 
 export function initMemoryGit(): void {
   try {
-    execSync(`git -C "${MEMORY_DIR}" rev-parse --git-dir`, {
-      stdio: "ignore",
-    });
+    gitSilent(["rev-parse", "--git-dir"]);
   } catch {
     try {
-      execSync(`git init "${MEMORY_DIR}"`, { stdio: "ignore" });
+      execFileSync("git", ["init", MEMORY_DIR], { stdio: "ignore" });
       const ignore = "*\n!profile.md\n!knowledge.md\n!.gitignore\n";
       writeFileSync(join(MEMORY_DIR, ".gitignore"), ignore);
-      execSync(`git -C "${MEMORY_DIR}" add .gitignore`, { stdio: "ignore" });
-      execSync(
-        `git -C "${MEMORY_DIR}" commit -m "init: pollux memory store" --author="pollux <pollux@local>"`,
-        { stdio: "ignore" },
-      );
+      gitSilent(["add", ".gitignore"]);
+      gitSilent([
+        "commit",
+        "-m",
+        "init: pollux memory store",
+        "--author=pollux <pollux@local>",
+      ]);
     } catch (err) {
       console.error("git-memory: init failed:", err);
     }

@@ -4,6 +4,8 @@ import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
 import {
   getMcpServers,
   setMcpServers,
+  mergeRedactedSecrets,
+  REDACTED,
   type StoredMcpServer,
 } from "@/lib/mcp-store";
 
@@ -15,12 +17,12 @@ function redactSecrets(
     const { ...safe } = server;
     if ("env" in safe) {
       (safe as Record<string, unknown>).env = Object.fromEntries(
-        Object.keys(safe.env!).map((k) => [k, "********"]),
+        Object.keys(safe.env!).map((k) => [k, REDACTED]),
       );
     }
     if ("headers" in safe) {
       (safe as Record<string, unknown>).headers = Object.fromEntries(
-        Object.keys(safe.headers!).map((k) => [k, "********"]),
+        Object.keys(safe.headers!).map((k) => [k, REDACTED]),
       );
     }
     redacted[name] = safe;
@@ -54,12 +56,17 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  const merged = mergeRedactedSecrets(
+    servers as Record<string, StoredMcpServer>,
+    getMcpServers(),
+  );
+
   try {
-    setMcpServers(servers as Record<string, StoredMcpServer>);
+    setMcpServers(merged);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Invalid config";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  return NextResponse.json({ servers: getMcpServers() });
+  return NextResponse.json({ servers: redactSecrets(merged) });
 }

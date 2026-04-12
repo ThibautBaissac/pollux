@@ -92,4 +92,65 @@ describe("mcp-store", () => {
       setMcpServers({ "": { command: "node" } }),
     ).toThrow("Server name is required");
   });
+
+  it("mergeRedactedSecrets preserves stored env when value is redacted", async () => {
+    const { mergeRedactedSecrets, REDACTED } = await loadMcpStore();
+
+    const stored: Record<string, StoredMcpServer> = {
+      srv: {
+        command: "node",
+        env: { API_KEY: "secret-value", DEBUG: "1" },
+      },
+    };
+    const incoming: Record<string, StoredMcpServer> = {
+      srv: {
+        command: "node",
+        env: { API_KEY: REDACTED, DEBUG: "2" },
+      },
+    };
+
+    const merged = mergeRedactedSecrets(incoming, stored);
+
+    expect((merged.srv as { env: Record<string, string> }).env).toEqual({
+      API_KEY: "secret-value",
+      DEBUG: "2",
+    });
+  });
+
+  it("mergeRedactedSecrets preserves stored headers when value is redacted", async () => {
+    const { mergeRedactedSecrets, REDACTED } = await loadMcpStore();
+
+    const stored: Record<string, StoredMcpServer> = {
+      api: {
+        type: "http",
+        url: "https://example.com",
+        headers: { Authorization: "Bearer real-token" },
+      },
+    };
+    const incoming: Record<string, StoredMcpServer> = {
+      api: {
+        type: "http",
+        url: "https://example.com",
+        headers: { Authorization: REDACTED },
+      },
+    };
+
+    const merged = mergeRedactedSecrets(incoming, stored);
+
+    expect(
+      (merged.api as { headers: Record<string, string> }).headers,
+    ).toEqual({ Authorization: "Bearer real-token" });
+  });
+
+  it("mergeRedactedSecrets passes through new servers unchanged", async () => {
+    const { mergeRedactedSecrets } = await loadMcpStore();
+
+    const incoming: Record<string, StoredMcpServer> = {
+      fresh: { command: "node", env: { NEW_KEY: "new-value" } },
+    };
+
+    const merged = mergeRedactedSecrets(incoming, {});
+
+    expect(merged).toEqual(incoming);
+  });
 });

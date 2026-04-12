@@ -7,7 +7,7 @@ import {
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { authConfig, sessions, recoveryCodes } from "@/lib/db/schema";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 const SALT_LENGTH = 16;
 const KEY_LENGTH = 64;
@@ -83,22 +83,13 @@ export async function validateSession(): Promise<boolean> {
   const session = db
     .select()
     .from(sessions)
-    .where(or(eq(sessions.token, tokenHash), eq(sessions.token, token)))
+    .where(eq(sessions.token, tokenHash))
     .get();
 
   if (!session) return false;
   if (session.expiresAt < new Date()) {
-    db.delete(sessions)
-      .where(or(eq(sessions.token, tokenHash), eq(sessions.token, token)))
-      .run();
+    db.delete(sessions).where(eq(sessions.token, tokenHash)).run();
     return false;
-  }
-
-  if (session.token !== tokenHash) {
-    db.update(sessions)
-      .set({ token: tokenHash })
-      .where(eq(sessions.token, session.token))
-      .run();
   }
 
   return true;
@@ -109,9 +100,7 @@ export async function destroySession(): Promise<void> {
   const token = cookieStore.get("session")?.value;
   if (token) {
     const tokenHash = hashSessionToken(token);
-    db.delete(sessions)
-      .where(or(eq(sessions.token, tokenHash), eq(sessions.token, token)))
-      .run();
+    db.delete(sessions).where(eq(sessions.token, tokenHash)).run();
   }
   cookieStore.delete("session");
 }
@@ -187,27 +176,42 @@ export async function performFirstTimeSetup(
   return succeeded;
 }
 
+export interface RecoveryCodeEntry {
+  hash: string;
+  prefix: string;
+}
+
+function recoveryPrefix(code: string): string {
+  return code.slice(0, 4);
+}
+
 export async function generateRecoveryCodes(): Promise<{
   codes: string[];
-  hashes: string[];
+  entries: RecoveryCodeEntry[];
 }> {
   const codes = Array.from({ length: 8 }, () => {
     const raw = randomBytes(8).toString("hex");
     return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12)}`;
   });
-  const hashes = await Promise.all(codes.map((code) => hashPassword(code)));
-  return { codes, hashes };
+  const entries = await Promise.all(
+    codes.map(async (code) => ({
+      hash: await hashPassword(code),
+      prefix: recoveryPrefix(code),
+    })),
+  );
+  return { codes, entries };
 }
 
-export function storeRecoveryCodes(hashes: string[]): void {
+export function storeRecoveryCodes(entries: RecoveryCodeEntry[]): void {
   const now = new Date();
   db.transaction((tx) => {
     tx.delete(recoveryCodes).run();
-    for (const hash of hashes) {
+    for (const entry of entries) {
       tx.insert(recoveryCodes)
         .values({
           id: randomBytes(16).toString("hex"),
-          codeHash: hash,
+          codeHash: entry.hash,
+          lookupPrefix: entry.prefix,
           used: 0,
           createdAt: now,
         })
@@ -217,13 +221,22 @@ export function storeRecoveryCodes(hashes: string[]): void {
 }
 
 export async function verifyRecoveryCode(code: string): Promise<boolean> {
-  const unused = db
+  const prefix = recoveryPrefix(code);
+  const candidates = db
     .select()
     .from(recoveryCodes)
-    .where(eq(recoveryCodes.used, 0))
+    .where(
+      and(
+        eq(recoveryCodes.used, 0),
+        or(
+          eq(recoveryCodes.lookupPrefix, prefix),
+          isNull(recoveryCodes.lookupPrefix),
+        ),
+      ),
+    )
     .all();
 
-  for (const row of unused) {
+  for (const row of candidates) {
     if (await verifyPassword(code, row.codeHash)) {
       const { changes } = db
         .update(recoveryCodes)

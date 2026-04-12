@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth-guard";
 import { readJsonObject, requireTrustedRequest } from "@/lib/request-guards";
-import { listReminders, createReminder } from "@/lib/reminders";
+import {
+  listReminders,
+  createReminder,
+  SAFE_REMINDER_ERRORS,
+} from "@/lib/reminders";
 
 export async function GET() {
   const authError = await requireAuth();
@@ -90,7 +94,11 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(reminder, { status: 201 });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Failed to create reminder";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    console.error("Failed to create reminder:", err);
+    const raw = err instanceof Error ? err.message : "";
+    const safe = SAFE_REMINDER_ERRORS.includes(raw)
+      ? raw
+      : "Failed to create reminder";
+    return NextResponse.json({ error: safe }, { status: 400 });
   }
 }

@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 export type JsonObject = Record<string, unknown>;
 
+// Missing sec-fetch-site / Origin are treated as untrusted so non-browser
+// clients (curl without headers, older user agents) cannot reach mutating
+// endpoints.
 export function requireTrustedRequest(
   request: NextRequest,
 ): NextResponse | null {
   const fetchSite = request.headers.get("sec-fetch-site");
+  if (!fetchSite) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   if (
-    fetchSite &&
     fetchSite !== "same-origin" &&
     fetchSite !== "same-site" &&
     fetchSite !== "none"
@@ -16,7 +21,7 @@ export function requireTrustedRequest(
   }
 
   const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) {
+  if (!origin || origin !== request.nextUrl.origin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

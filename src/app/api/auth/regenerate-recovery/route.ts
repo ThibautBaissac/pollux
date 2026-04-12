@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
   const pwError = await requirePasswordConfirmation(currentPassword);
   if (pwError) return pwError;
 
-  const { codes, hashes } = await generateRecoveryCodes();
-  storeRecoveryCodes(hashes);
+  const { codes, entries } = await generateRecoveryCodes();
+  storeRecoveryCodes(entries);
 
   return NextResponse.json({ success: true, recoveryCodes: codes });
 }

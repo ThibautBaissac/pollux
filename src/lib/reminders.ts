@@ -38,13 +38,24 @@ export function formatSchedule(r: Reminder): string {
   return `once: ${r.scheduledAt}`;
 }
 
+export const REMINDER_VALIDATION_ERRORS = {
+  invalidCron: "Invalid cron expression",
+  invalidScheduledAt: "Invalid scheduledAt",
+  cronRequired: "cronExpr required for recurring",
+  scheduledAtRequired: "scheduledAt required for once",
+} as const;
+
+export const SAFE_REMINDER_ERRORS: readonly string[] = Object.values(
+  REMINDER_VALIDATION_ERRORS,
+);
+
 export function validateCronExpr(expr: string): string | null {
-  if (!expr.trim()) return "Invalid cron expression";
+  if (!expr.trim()) return REMINDER_VALIDATION_ERRORS.invalidCron;
   try {
     CronExpressionParser.parse(expr);
     return null;
   } catch {
-    return "Invalid cron expression";
+    return REMINDER_VALIDATION_ERRORS.invalidCron;
   }
 }
 
@@ -81,15 +92,21 @@ export function createReminder(params: {
   let scheduledAt: Date | null = null;
 
   if (params.scheduleType === "recurring") {
-    if (!params.cronExpr) throw new Error("cronExpr required for recurring");
+    if (!params.cronExpr) {
+      throw new Error(REMINDER_VALIDATION_ERRORS.cronRequired);
+    }
     const err = validateCronExpr(params.cronExpr);
     if (err) throw new Error(err);
     cronExpr = params.cronExpr;
     nextRunAt = computeNextRun(cronExpr, tz);
   } else {
-    if (!params.scheduledAt) throw new Error("scheduledAt required for once");
+    if (!params.scheduledAt) {
+      throw new Error(REMINDER_VALIDATION_ERRORS.scheduledAtRequired);
+    }
     scheduledAt = new Date(params.scheduledAt);
-    if (isNaN(scheduledAt.getTime())) throw new Error("Invalid scheduledAt");
+    if (isNaN(scheduledAt.getTime())) {
+      throw new Error(REMINDER_VALIDATION_ERRORS.invalidScheduledAt);
+    }
     nextRunAt = scheduledAt;
   }
 

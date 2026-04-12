@@ -148,8 +148,8 @@ describe("auth API routes", () => {
   it("recovers an account, rotates sessions, and updates the password", async () => {
     const { auth, recoverRoute } = await loadModules();
     await auth.changePassword("hunter22");
-    const { codes, hashes } = await auth.generateRecoveryCodes();
-    auth.storeRecoveryCodes(hashes);
+    const { codes, entries } = await auth.generateRecoveryCodes();
+    auth.storeRecoveryCodes(entries);
     await auth.createSession();
     cookieStore.delete("session");
     await auth.createSession();
@@ -213,7 +213,7 @@ describe("auth API routes", () => {
     await auth.changePassword("hunter22");
     await auth.createSession();
     const initial = await auth.generateRecoveryCodes();
-    auth.storeRecoveryCodes(initial.hashes);
+    auth.storeRecoveryCodes(initial.entries);
 
     const response = await regenerateRecoveryRoute.POST(
       buildJsonRequest("http://localhost/api/auth/regenerate-recovery", {

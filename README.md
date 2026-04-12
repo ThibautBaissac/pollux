@@ -109,6 +109,16 @@ Single-user authentication with 7-day HTTP-only session cookies.
 
 All password-changing operations invalidate existing sessions. Recovery codes are individually hashed with scrypt and each code works exactly once.
 
+## Security model
+
+Pollux is designed for **single-user, localhost-only** use. Several features deliberately trust the authenticated user with the same privileges as the OS account running the app:
+
+- **Registered stdio MCP servers** spawn arbitrary commands with full access to the user's environment and filesystem.
+- **The agent's Bash / Write / Edit tools** operate in the configured working directory with the app user's permissions.
+- **The working directory setting** accepts any path on disk, including `$HOME` or `/`.
+
+Do not expose Pollux on a network interface, do not share session cookies, and do not use it behind a reverse proxy without additional access control. A stolen session cookie effectively grants shell access to the host.
+
 ## Stack
 
 | Layer | Tech |

@@ -1,0 +1,1 @@
+ALTER TABLE `recovery_codes` ADD `lookup_prefix` text;

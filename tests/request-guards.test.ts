@@ -40,6 +40,7 @@ describe("requireTrustedRequest", () => {
     const request = buildRequest({
       headers: {
         origin: "https://evil.example",
+        "sec-fetch-site": "same-origin",
       },
     });
 
@@ -52,6 +53,7 @@ describe("requireTrustedRequest", () => {
   it("rejects cross-site fetch metadata", async () => {
     const request = buildRequest({
       headers: {
+        origin: "http://localhost",
         "sec-fetch-site": "cross-site",
       },
     });
@@ -60,6 +62,30 @@ describe("requireTrustedRequest", () => {
 
     expect(response?.status).toBe(403);
     expect(await response?.json()).toEqual({ error: "Forbidden" });
+  });
+
+  it("rejects requests with no sec-fetch-site header", async () => {
+    const request = buildRequest({
+      headers: {
+        origin: "http://localhost",
+      },
+    });
+
+    const response = requireTrustedRequest(request);
+
+    expect(response?.status).toBe(403);
+  });
+
+  it("rejects requests with no origin header", async () => {
+    const request = buildRequest({
+      headers: {
+        "sec-fetch-site": "same-origin",
+      },
+    });
+
+    const response = requireTrustedRequest(request);
+
+    expect(response?.status).toBe(403);
   });
 });
 

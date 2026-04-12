@@ -1,8 +1,13 @@
+import { createHash } from "crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { authConfig, recoveryCodes, sessions } from "@/lib/db/schema";
 import { createMockCookieStore } from "./helpers/mock-cookies";
 import { createTestDb, type TestDbContext } from "./helpers/test-db";
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 describe("auth", () => {
   let testDb: TestDbContext;
@@ -61,7 +66,22 @@ describe("auth", () => {
     expect(stored?.token).not.toBe(token);
   });
 
-  it("migrates legacy plain-text session tokens to hashed tokens", async () => {
+  it("rejects session cookies whose value matches a stored hash directly", async () => {
+    const { createSession, validateSession } = await loadAuthModule();
+
+    const rawToken = await createSession();
+    const stored = testDb.db.select().from(sessions).get();
+    expect(stored?.token).toBeTruthy();
+    expect(stored?.token).not.toBe(rawToken);
+
+    // Replay the stored hash as if it were a cookie value — must not
+    // authenticate now that the plaintext fallback is gone.
+    cookieStore.set("session", stored!.token);
+
+    expect(await validateSession()).toBe(false);
+  });
+
+  it("rejects legacy plain-text session tokens after migration", async () => {
     const { validateSession } = await loadAuthModule();
     const legacyToken = "legacy-token";
     const now = new Date();
@@ -76,25 +96,23 @@ describe("auth", () => {
       .run();
     cookieStore.set("session", legacyToken);
 
-    expect(await validateSession()).toBe(true);
-
-    const stored = testDb.db.select().from(sessions).get();
-    expect(stored?.token).not.toBe(legacyToken);
+    expect(await validateSession()).toBe(false);
   });
 
   it("rejects expired sessions and removes them", async () => {
     const { validateSession } = await loadAuthModule();
     const now = new Date();
+    const rawToken = "expired-token";
 
     testDb.db
       .insert(sessions)
       .values({
-        token: "expired-token",
+        token: hashToken(rawToken),
         createdAt: new Date(now.getTime() - 120_000),
         expiresAt: new Date(now.getTime() - 60_000),
       })
       .run();
-    cookieStore.set("session", "expired-token");
+    cookieStore.set("session", rawToken);
 
     expect(await validateSession()).toBe(false);
     expect(testDb.db.select().from(sessions).all()).toEqual([]);
@@ -141,15 +159,38 @@ describe("auth", () => {
       verifyRecoveryCode,
     } = await loadAuthModule();
 
-    const { codes, hashes } = await generateRecoveryCodes();
-    storeRecoveryCodes(hashes);
+    const { codes, entries } = await generateRecoveryCodes();
+    storeRecoveryCodes(entries);
 
     expect(codes).toHaveLength(8);
     expect(new Set(codes).size).toBe(8);
-    expect(testDb.db.select().from(recoveryCodes).all()).toHaveLength(8);
+    const stored = testDb.db.select().from(recoveryCodes).all();
+    expect(stored).toHaveLength(8);
+    expect(stored.every((row) => row.lookupPrefix?.length === 4)).toBe(true);
 
     expect(await verifyRecoveryCode(codes[0])).toBe(true);
     expect(await verifyRecoveryCode(codes[0])).toBe(false);
+    expect(await verifyRecoveryCode("bogus-code")).toBe(false);
+  });
+
+  it("verifies legacy recovery codes that have no lookup prefix", async () => {
+    const { hashPassword, verifyRecoveryCode } = await loadAuthModule();
+    const legacyCode = "aaaa-bbbb-cccc-dddd";
+    const hash = await hashPassword(legacyCode);
+
+    testDb.db
+      .insert(recoveryCodes)
+      .values({
+        id: "legacy-1",
+        codeHash: hash,
+        lookupPrefix: null,
+        used: 0,
+        createdAt: new Date(),
+      })
+      .run();
+
+    expect(await verifyRecoveryCode(legacyCode)).toBe(true);
+    expect(await verifyRecoveryCode(legacyCode)).toBe(false);
   });
 
   it("destroys all sessions", async () => {

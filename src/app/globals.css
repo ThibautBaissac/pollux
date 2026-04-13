@@ -2,16 +2,16 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --color-bg-primary: #1f1f1e;
-  --color-bg-secondary: #2c2c2b;
-  --color-bg-tertiary: #212121;
-  --color-bg-hover: #2a2a2a;
-  --color-bg-bubble: #323232;
+  --color-bg-primary: #161615;
+  --color-bg-secondary: #242423;
+  --color-bg-tertiary: #1c1c1b;
+  --color-bg-hover: #2e2e2c;
+  --color-bg-bubble: #2a2a28;
   --color-text-primary: #ececec;
   --color-text-secondary: #9b9b9b;
   --color-text-muted: #97958c;
-  --color-border: #2a2a2a;
-  --color-border-subtle: #1e1e1e;
+  --color-border: #2d2d2b;
+  --color-border-subtle: #222221;
   --color-accent: #3b82f6;
   --color-accent-hover: #2563eb;
   --color-danger: #ef4444;
@@ -56,9 +56,14 @@ body {
   flex-shrink: 0;
 }
 
+.surface-gradient {
+  background: linear-gradient(180deg, #1a1a19 0%, #131312 100%);
+}
+
 .chat-main {
   flex: 1;
   min-width: 0;
+  background: linear-gradient(180deg, #1a1a19 0%, #131312 100%);
 }
 
 @media (max-width: 767px) {

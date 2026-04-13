@@ -184,9 +184,9 @@ export function SettingsPageClient({
   }
 
   return (
-    <div className="flex min-h-screen bg-bg-primary">
+    <div className="flex min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-56 shrink-0 flex-col border-r border-border bg-bg-secondary">
+      <aside className="hidden md:flex w-56 shrink-0 flex-col border-r border-border-subtle bg-bg-secondary">
         <div className="flex items-center justify-between px-4 pt-6 pb-4">
           <h1 className="text-lg font-bold text-text-primary">Settings</h1>
           <Link
@@ -210,7 +210,7 @@ export function SettingsPageClient({
                       onClick={() => setActiveSection(section.key)}
                       className={`w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                         activeSection === section.key
-                          ? "bg-bg-hover text-accent font-medium"
+                          ? "bg-bg-hover text-text-primary font-medium"
                           : "text-text-secondary hover:text-text-primary hover:bg-bg-hover"
                       }`}
                     >
@@ -225,10 +225,10 @@ export function SettingsPageClient({
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="surface-gradient flex-1 overflow-y-auto">
         {/* Mobile header + tabs */}
         <div className="md:hidden">
-          <div className="flex items-center justify-between border-b border-border bg-bg-secondary px-4 py-3">
+          <div className="flex items-center justify-between border-b border-border-subtle bg-bg-secondary px-4 py-3">
             <h1 className="text-lg font-bold text-text-primary">Settings</h1>
             <Link
               href="/chat"
@@ -237,12 +237,12 @@ export function SettingsPageClient({
               Back
             </Link>
           </div>
-          <div className="overflow-x-auto border-b border-border bg-bg-secondary scrollbar-none">
+          <div className="overflow-x-auto border-b border-border-subtle bg-bg-secondary scrollbar-none">
             <div className="flex min-w-max gap-1 px-2 py-1.5">
               {GROUPS.map((group, gi) => (
                 <div key={group.label} className="flex items-center gap-1">
                   {gi > 0 && (
-                    <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                    <div className="mx-1 h-4 w-px shrink-0 bg-border-subtle" />
                   )}
                   {group.sections.map((section) => (
                     <button
@@ -250,7 +250,7 @@ export function SettingsPageClient({
                       onClick={() => setActiveSection(section.key)}
                       className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                         activeSection === section.key
-                          ? "bg-bg-hover text-accent"
+                          ? "bg-bg-hover text-text-primary"
                           : "text-text-secondary"
                       }`}
                     >
@@ -273,7 +273,7 @@ export function SettingsPageClient({
               {current.description}
             </p>
           </div>
-          <div className="rounded-lg border border-border bg-bg-secondary p-4">
+          <div className="rounded-xl border border-border-subtle bg-bg-secondary p-5 shadow-[0_10px_30px_-14px_rgba(0,0,0,0.6)]">
             {renderContent()}
           </div>
         </div>

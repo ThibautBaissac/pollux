@@ -47,9 +47,9 @@ export function ChatInput() {
   }
 
   return (
-    <div className="px-4 pb-5 pt-3">
+    <div className="px-4 pb-6 pt-3">
       <div className="mx-auto max-w-2xl">
-        <div className="rounded-2xl border border-border bg-bg-secondary transition-colors">
+        <div className="rounded-2xl border border-border-subtle bg-bg-secondary shadow-[0_10px_30px_-14px_rgba(0,0,0,0.7)] transition-colors focus-within:border-border">
           <textarea
             ref={textareaRef}
             value={text}

@@ -10,4 +10,5 @@ export const RATE_LIMITS = {
   changePassword: { key: "auth:change-password", limit: 8, windowMs: FIVE_MINUTES },
   changeEmail: { key: "auth:change-email", limit: 8, windowMs: FIVE_MINUTES },
   regenerateRecovery: { key: "auth:regenerate-recovery", limit: 8, windowMs: FIVE_MINUTES },
+  skillsMutate: { key: "skills:mutate", limit: 60, windowMs: FIVE_MINUTES },
 } satisfies Record<string, RateLimitOptions>;

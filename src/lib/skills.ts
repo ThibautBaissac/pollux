@@ -77,6 +77,20 @@ export class SkillIOError extends Error {
   }
 }
 
+export class SkillPayloadTooLargeError extends SkillValidationError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SkillPayloadTooLargeError";
+  }
+}
+
+export class SkillForbiddenError extends SkillValidationError {
+  constructor(message: string) {
+    super(message);
+    this.name = "SkillForbiddenError";
+  }
+}
+
 function validateName(name: unknown): asserts name is string {
   if (typeof name !== "string" || !NAME_REGEX.test(name)) {
     throw new SkillValidationError(
@@ -109,7 +123,7 @@ function validateTags(tags: unknown): asserts tags is string[] {
 function validateBodySize(body: string): void {
   const size = Buffer.byteLength(body, "utf-8");
   if (size > BODY_MAX) {
-    throw new SkillValidationError(
+    throw new SkillPayloadTooLargeError(
       `body exceeds ${BODY_MAX} bytes (got ${size})`,
     );
   }
@@ -281,7 +295,7 @@ function collectSupportingFiles(
   return collected.slice(0, SUPPORTING_FILES_CAP);
 }
 
-function walkSkills(): {
+export function walkSkills(): {
   entries: SkillIndexEntry[];
   diagnostics: SkillDiagnostic[];
 } {
@@ -352,7 +366,7 @@ export function readSupportingFile(name: string, relPath: string): string {
     throw new SkillValidationError("path required");
   }
   if (isAbsolute(relPath)) {
-    throw new SkillValidationError("absolute path not allowed");
+    throw new SkillForbiddenError("absolute path not allowed");
   }
 
   const normalized = normalize(relPath);
@@ -361,7 +375,7 @@ export function readSupportingFile(name: string, relPath: string): string {
   }
   const segments = normalized.split(sep).filter((s) => s.length > 0);
   if (segments.some((s) => s === "..")) {
-    throw new SkillValidationError("path traversal not allowed");
+    throw new SkillForbiddenError("path traversal not allowed");
   }
   if (segments.length === 0) {
     throw new SkillValidationError("path required");
@@ -382,7 +396,7 @@ export function readSupportingFile(name: string, relPath: string): string {
       throw new SkillNotFoundError(`file not found: ${relPath}`);
     }
     if (finalSt.isSymbolicLink()) {
-      throw new SkillValidationError("symlinks not allowed");
+      throw new SkillForbiddenError("symlinks not allowed");
     }
   }
 
@@ -390,7 +404,7 @@ export function readSupportingFile(name: string, relPath: string): string {
     throw new SkillValidationError("not a regular file");
   }
   if (finalSt.size > SUPPORTING_FILE_MAX) {
-    throw new SkillValidationError(
+    throw new SkillPayloadTooLargeError(
       `file exceeds ${SUPPORTING_FILE_MAX} bytes`,
     );
   }

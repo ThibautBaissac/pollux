@@ -75,10 +75,12 @@ When I ask for a weekly review, a weekly summary, or say "wrap up the week".
 | Field | Type | Required | Constraints |
 |---|---|---|---|
 | `name` | string | yes | kebab-case, `^[a-z][a-z0-9-]{1,47}$`, must match directory name |
-| `description` | string | yes | 1–280 chars. This is what's injected into the system prompt. Treat it like ad copy. |
+| `description` | string | yes | 1–200 chars (soft warn above 150). This is what's injected into the system prompt. Treat it like ad copy. |
 | `tags` | string[] | no | Free-form. Used for UI filtering only. |
 
-Reject unknown fields at parse time, but with a warning (log), not an error — forward-compatibility.
+Unknown fields are **ignored silently** (forward-compatibility). Missing required fields invalidate the skill and surface via `readSkillDiagnostics()` (§5.2). No middle ground — either a skill loads or it's in diagnostics; no half-loaded skills.
+
+**Body size cap: 32 KB.** A single skill `view` returning hundreds of KB would blow the turn budget even if the index stays small. Enforced on create/update (write rejects) and on read (oversized body surfaces as a diagnostic, not loaded).
 
 ### 4.3 Storage layout
 
@@ -96,9 +98,12 @@ data/
       SKILL.md
 ```
 
-- Path: `data/skills/<slug>/SKILL.md`
-- Slug = directory name = frontmatter `name`. Validated equal on load; mismatch = skill is ignored with a warning.
-- Supporting files (`examples/`, `references/`, `templates/`, whatever) can live anywhere under the skill dir. The agent reads them via the existing `Read` tool once it has viewed the skill — no special tooling required.
+- Path: `data/skills/<slug>/SKILL.md`, resolved against `process.cwd()` (the Pollux app root, same pattern as `MEMORY_DIR` in `src/lib/memory.ts:10`). This is **not** `getCwd()` from `src/lib/cwd-store.ts` — that one is the agent's working directory for Read/Glob/Bash, often a different repo.
+- Slug = directory name = frontmatter `name`. Validated equal on load; mismatch = skill is rejected with a diagnostic.
+- Supporting files (`examples/`, `references/`, `templates/`, whatever) can live under the skill dir. Because `data/skills/` is under the Pollux app root (not the agent's cwd), the agent's filesystem tools cannot reach them by relative path. They are exposed only through the `pollux-skills` MCP tool:
+  - `view` returns `supporting_files: { path, size_bytes }[]` (metadata only, sorted, capped at 100 entries).
+  - `view_file` action loads a specific file's content by `{ name, path }`, capped at 32 KB per call.
+  - Symlinks are rejected at both list and read time — skill dirs must be self-contained. Reason: a symlink that escapes the skill dir turns "view supporting file" into arbitrary filesystem read.
 
 ### 4.4 Why no database table
 
@@ -120,8 +125,9 @@ Extend `buildSystemPrompt()` in `src/lib/agent.ts` (currently around line 51). A
 You have procedural skills available. Each is a named how-to for a specific kind of task.
 Before replying, scan this list. If a skill matches or is partially relevant to the
 request, call the `skill` tool with action='view' to load its full instructions,
-then follow them. If a skill is missing a step or is wrong, fix it with
-action='edit' — this is how skills improve.
+then follow them. If a skill has supporting examples or templates, fetch them with
+action='view_file'. If a skill is missing a step or is wrong, fix it with
+action='update' — this is how skills improve.
 
 - weekly-review — Produce my weekly review in the format I prefer...
 - pr-description — Write PR descriptions the way I like them...
@@ -136,39 +142,63 @@ New module `src/lib/skills.ts` exposing:
 
 ```typescript
 type SkillIndexEntry = { name: string; description: string; tags: string[] };
-type Skill = { name: string; description: string; tags: string[]; body: string };
-
-readSkillIndex(): SkillIndexEntry[]            // sorted by name
-readSkill(name: string): Skill | null          // returns null if not found or invalid
-writeSkill(input: {
+type Skill = {
+  name: string;
+  description: string;
+  tags: string[];
+  body: string;
+  supportingFiles: { path: string; sizeBytes: number }[];
+};
+type SkillDiagnostic = { dir: string; reason: string };
+type CreateInput = {
   name: string;
   description: string;
   body: string;
   tags?: string[];
-}): void                                       // create OR overwrite; validates name collision on create
-deleteSkill(name: string): void
-listSupportingFiles(name: string): string[]    // relative paths under data/skills/<name>/, excluding SKILL.md
+};
+type UpdatePatch = {
+  description?: string;
+  body?: string;
+  tags?: string[];
+};
+
+readSkillIndex(): SkillIndexEntry[]            // sorted by name; excludes invalid skills
+readSkill(name: string): Skill | null          // null if not found or invalid
+readSkillDiagnostics(): SkillDiagnostic[]      // invalid skill dirs with reasons
+readSupportingFile(name: string, relPath: string): string  // throws on symlink, missing, oversize
+createSkill(input: CreateInput): void          // throws if name exists
+updateSkill(name: string, patch: UpdatePatch): void  // throws if missing; at least one patch field required
+deleteSkill(name: string): { deleted: string[] }  // recursive; returns paths removed relative to skill dir
 ```
+
+Split rationale: `create` and `update` have incompatible preconditions (create fails on collision, update fails on missing). A single `writeSkill` that is "create or overwrite" cannot express that without mode flags, and mode flags defeat the point. Keep the two verbs separate in the module, in the MCP tool, and in the REST API.
 
 Implementation notes:
-- Walk `data/skills/` once, one `stat` + `readFile` per `SKILL.md`, parse frontmatter with `gray-matter` (already fits Pollux's dependency taste — small, zero-dep otherwise) or a minimal hand-rolled parser if we want to avoid the dep.
-- No caching in v1. If profiling shows it matters later, cache the index with an mtime-based invalidation — but the memory files are read fresh every turn too and nobody has complained, so skip.
-- Skip directories whose `SKILL.md` fails validation; surface the error through a separate `readSkillDiagnostics()` that the settings UI can display.
+- Walk `data/skills/` once, one `stat` + `readFile` per `SKILL.md`. Parse frontmatter with `gray-matter`. Earlier draft said hand-rolled; Codex rightly flagged that regex-YAML is the worst of both worlds — either the header is real YAML (use `gray-matter`/`js-yaml`) or it's not YAML at all. Since the precedent and Hermes reference both use YAML frontmatter, commit to it properly.
+- `readSkillDiagnostics()` is surfaced via `GET /api/skills/diagnostics` and rendered in the settings UI as a warning banner. Invisible invalid skills are a footgun.
+- Symlink rejection: use `lstat` during the walk and on every supporting-file read. Refuse any entry whose type is symlink.
+- Size caps enforced in the module (not just the UI / API): 32 KB per `body`, 32 KB per supporting file read, 100 supporting files per skill.
+- No caching in v1. Memory files are read fresh every turn too and nobody has complained. Revisit with profiling if index generation shows up.
+- Concurrency: the app is single-user, single-writer. Last-write-wins across UI / MCP / local editor is acceptable. No file locking. Call this out so future-us doesn't build optimistic concurrency by accident.
 
-### 5.3 Wiring into chat
+### 5.3 Wiring into the agent
 
-In `src/lib/chat.ts` (around `createChatStream`, currently ~line 120), alongside the existing `readMemory()` call:
+Read the skill index **inside `startAgent()`** in `src/lib/agent.ts:108`, not in the chat route. Reason: chat and scheduled reminders both call `startAgent()`. If the index is threaded through chat only, scheduled-agent runs (`src/lib/scheduled-agent.ts:48`) will be skill-blind. The memory content is currently a param because the chat route reads it before persisting the user message, but skills have no such ordering requirement — they can be read at agent-start time.
 
 ```typescript
-const memoryContent = readMemory();
+// src/lib/agent.ts — inside startAgent()
+const cwd = getCwd();
 const skillIndex = readSkillIndex();
+const userMcpServers = getMcpServers();
+// ...
+systemPrompt: buildSystemPrompt(params.memoryContent, skillIndex, cwd),
 ```
 
-Pass `skillIndex` into `buildSystemPrompt(memoryContent, skillIndex, cwd)`.
+`buildSystemPrompt()` signature becomes `(memoryContent: string, skillIndex: SkillIndexEntry[], cwd: string)`. No changes in `chat.ts` or `scheduled-agent.ts` — they keep calling `startAgent()` as today.
 
 ### 5.4 Prompt budget
 
-Each skill contributes roughly `"- <name> — <description>\n"` to the system prompt. At 280-char descriptions + ~20 chars overhead, a 30-skill index is ~9 KB of prompt. Comfortable.
+Each skill contributes roughly `"- <name> — <description>\n"` to the system prompt. At 200-char descriptions + ~20 chars overhead, a 30-skill index is ~6.5 KB of prompt. Comfortable.
 
 **Soft limit: 30 skills.** Above that, show a warning in the Skills UI: "Large skill indexes inflate every prompt. Consider pruning or merging skills." No hard block.
 
@@ -181,26 +211,41 @@ Mirror `src/lib/reminder-tool.ts` exactly. One server, one tool, discriminated-u
 ```typescript
 const SKILL_MCP_SERVER_NAME = "pollux-skills";
 const SKILL_MCP_TOOL_NAME = "skill";
+const BODY_MAX = 32 * 1024;
+const FILE_MAX = 32 * 1024;
+
+const updatePatch = z.object({
+  description: z.string().min(1).max(200).optional(),
+  body: z.string().max(BODY_MAX).optional(),
+  tags: z.array(z.string()).optional(),
+}).refine(
+  (p) => p.description !== undefined || p.body !== undefined || p.tags !== undefined,
+  { message: "update requires at least one of description, body, tags" },
+);
 
 const skillTool = tool({
   name: SKILL_MCP_TOOL_NAME,
-  description: "Manage procedural skills. Actions: list, view, create, edit, delete.",
+  description:
+    "Manage procedural skills. Actions: list, view, view_file, create, update, delete.",
   inputSchema: z.discriminatedUnion("action", [
     z.object({ action: z.literal("list") }),
     z.object({ action: z.literal("view"), name: z.string() }),
     z.object({
+      action: z.literal("view_file"),
+      name: z.string(),
+      path: z.string(),   // relative to skill dir, no "..", no absolute paths
+    }),
+    z.object({
       action: z.literal("create"),
       name: z.string(),
-      description: z.string().min(1).max(280),
-      body: z.string(),
+      description: z.string().min(1).max(200),
+      body: z.string().max(BODY_MAX),
       tags: z.array(z.string()).optional(),
     }),
     z.object({
-      action: z.literal("edit"),
+      action: z.literal("update"),
       name: z.string(),
-      description: z.string().min(1).max(280).optional(),
-      body: z.string().optional(),
-      tags: z.array(z.string()).optional(),
+      patch: updatePatch,
     }),
     z.object({ action: z.literal("delete"), name: z.string() }),
   ]),
@@ -213,20 +258,27 @@ export const skillMcpServer = createSdkMcpServer({
 });
 ```
 
+Renamed `edit` → `update` to match the split in `src/lib/skills.ts` (createSkill / updateSkill). The system-prompt instruction in §5.1 uses `action='update'` accordingly.
+
 ### 6.2 Return shapes
 
 - `list` → `{ skills: Array<{ name, description, tags }> }` (same as `readSkillIndex()`)
-- `view` → `{ name, description, tags, body, supporting_files: string[] }`
-- `create` / `edit` / `delete` → `{ ok: true }` on success
+- `view` → `{ name, description, tags, body, supporting_files: { path, size_bytes }[] }` — supporting-file contents are NOT inlined; use `view_file` to fetch one.
+- `view_file` → `{ name, path, content }` — text only; binary / oversized files throw.
+- `create` / `update` → `{ ok: true }` on success
+- `delete` → `{ ok: true, deleted: string[] }` — paths removed relative to skill dir, always includes `SKILL.md` plus any supporting files. Lets the agent surface unexpected deletions back to the user.
 - Errors: throw with a clear message; the SDK surfaces it as the tool result.
 
 ### 6.3 Validation rules (enforced in the tool handler, not just the UI)
 
 - `name` slug regex on create.
-- `description` length on create + edit.
+- `description` length on create + update.
+- `body` size ≤ 32 KB on create + update.
+- `update` patch must include at least one of `description`, `body`, `tags` (refine in Zod).
 - `create` fails if skill already exists.
-- `edit` / `view` / `delete` fail with a clear message if skill doesn't exist.
-- `delete` is immediate — no trash. (The user has git for regret.)
+- `update` / `view` / `view_file` / `delete` fail with a clear message if skill doesn't exist.
+- `view_file` rejects symlinks, absolute paths, and paths containing `..`. Resolved path must stay inside the skill dir.
+- `delete` is immediate — no trash. (The user has git for regret.) It **does** cascade supporting files; the returned `deleted` list makes the scope auditable. On partial failure (e.g., EPERM on one file), the handler throws with `{ deleted: [...successful paths], remaining: [...unremoved paths] }` embedded in the error message so the caller can see what's left on disk. The skill dir itself is removed only if it's empty at the end.
 
 ### 6.4 Agent registration
 
@@ -252,17 +304,21 @@ Thin wrappers over `src/lib/skills.ts`, mirroring the existing `/api/memory` sty
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| `GET` | `/api/skills` | — | `{ skills: SkillIndexEntry[] }` |
+| `GET` | `/api/skills` | — | `{ skills: SkillIndexEntry[], diagnostics: SkillDiagnostic[] }` |
 | `POST` | `/api/skills` | `{ name, description, body, tags? }` | `{ ok: true }` (409 on name collision) |
 | `GET` | `/api/skills/[name]` | — | `{ name, description, tags, body, supporting_files }` (404 if missing) |
-| `PUT` | `/api/skills/[name]` | `{ description?, body?, tags? }` | `{ ok: true }` |
-| `DELETE` | `/api/skills/[name]` | — | `{ ok: true }` |
+| `GET` | `/api/skills/[name]/files/[...path]` | — | raw text body (404 if missing; 403 on symlink / escape) |
+| `PATCH` | `/api/skills/[name]` | `{ description?, body?, tags? }` — at least one required | `{ ok: true }` |
+| `DELETE` | `/api/skills/[name]` | — | `{ ok: true, deleted: string[] }` |
+
+Verb choice: `PATCH` (not `PUT`) because the update is a partial patch. Matches existing conventions where the resource representation is only partially mutable.
 
 All routes:
-- Guarded via `requireAuth()`.
-- Rate-limited under the same bucket as `/api/memory` (define in `src/lib/rate-limit-config.ts`).
-- Input validated with the same Zod schemas used in the MCP tool (share the schemas via `src/lib/skills.ts`).
-- 400 on invalid input; 404 on missing skill; 409 on create collision.
+- `GET` routes guarded via `requireAuth()`.
+- **Mutating routes** (`POST`, `PATCH`, `DELETE`) guarded via `requireAuth()` **and** `requireTrustedRequest()` (see `src/lib/request-guards.ts:8`). Matches the memory `PUT` route. Without the trusted-request guard, any authenticated browser session is CSRFable from an arbitrary origin.
+- Rate-limited: add a `skills` bucket to `src/lib/rate-limit-config.ts` (earlier draft assumed a `/api/memory` bucket that doesn't exist — memory isn't rate-limited today). Suggested: `{ key: "skills:mutate", limit: 60, windowMs: FIVE_MINUTES }` for `POST`/`PATCH`/`DELETE`; reads uncapped.
+- Input validated with the same Zod schemas used in the MCP tool (share via `src/lib/skills.ts`).
+- 400 on invalid input; 403 on untrusted origin or symlink / path-escape; 404 on missing skill; 409 on create collision; 413 on body-size overflow.
 
 ## 8. Slash command
 
@@ -310,7 +366,7 @@ Two-pane layout inside the existing settings section container:
   - Empty state: "No skills yet. Create one from a recipe you keep repeating."
 
 - **Right pane** (editor):
-  - Form fields: `name` (required on create, disabled on edit — rename = delete + create), `description` (textarea with char counter, hard cap 280), `tags` (comma-split text input).
+  - Form fields: `name` (required on create, disabled on edit — rename = delete + create), `description` (textarea with char counter, soft warn at 150, hard cap 200), `tags` (comma-split text input).
   - `body` editor: monospace `<textarea>`, min-height 400px. No preview in v1. No syntax highlighting in v1.
   - Buttons: `Save` (disabled when pristine), `Delete` (with JS confirm dialog), `Cancel` (discards unsaved edits).
   - "Supporting files" footer: lists files under the skill dir other than `SKILL.md`, read-only. Managed outside Pollux (finder / editor).
@@ -321,7 +377,22 @@ Reuse the existing memory-editor look. Dark theme, rounded corners, accent color
 
 ### 9.4 Query param
 
-Respect `?section=skills` so `/skills` slash command can deep-link. Existing pattern — settings page already reads `searchParams`.
+Respect `?section=skills` so `/skills` slash command can deep-link. **Earlier draft was wrong** — `SettingsPageClient.tsx:103` initializes `activeSection` from `useState("memory")` and ignores `searchParams`. Add this as part of PR 3:
+
+```typescript
+// SettingsPageClient props gain an initialSection
+export function SettingsPageClient({ initialEmail, initialSection }: {
+  initialEmail: string;
+  initialSection?: Section;
+}) {
+  const [activeSection, setActiveSection] = useState<Section>(initialSection ?? "memory");
+  // ...
+}
+
+// src/app/settings/page.tsx reads searchParams (server component) and forwards.
+```
+
+This change is small but is a prerequisite for the slash-command deep-link, not pre-existing infrastructure.
 
 ## 10. Seed content
 
@@ -333,16 +404,30 @@ Ship one example skill committed to the repo so the feature isn't empty on first
 
 New file `tests/skills.test.ts`. Follow the temp-dir pattern used in `tests/memory.test.ts`:
 
-- `readSkillIndex()` returns sorted entries.
-- `readSkillIndex()` skips invalid frontmatter with a diagnostic.
+Module-level (`src/lib/skills.ts`):
+- `readSkillIndex()` returns entries sorted by `name`.
+- `readSkillIndex()` excludes invalid skills; `readSkillDiagnostics()` reports them with reasons (bad frontmatter, name ≠ dirname, body oversize, symlinked `SKILL.md`).
 - `readSkill()` returns `null` for missing skill.
-- `writeSkill()` creates a new skill with correct path + frontmatter.
-- `writeSkill()` on existing name overwrites (from the `edit` flow) — but the MCP/API layer guards against unintended creates.
-- `deleteSkill()` removes the directory entirely (including supporting files) — confirm recursive delete is intentional.
-- Validation: name regex, description length, name = dirname invariant.
-- MCP tool dispatch: each action round-trips through the handler.
+- `readSkill()` returns supporting files as metadata only, size-sorted, capped at 100 entries; symlinks omitted.
+- `readSupportingFile()` rejects: missing, oversize (>32 KB), symlink, absolute path, `..` traversal.
+- `createSkill()` writes `SKILL.md` with gray-matter frontmatter + body; throws on existing name; enforces name regex, description length, body size cap.
+- `updateSkill()` throws on missing skill; rejects empty patch; preserves frontmatter fields not in patch; enforces the same size/length caps.
+- `deleteSkill()` removes the directory recursively and returns the `deleted` path list (including supporting files).
+- `deleteSkill()` partial-failure path: if one file can't be removed, the error message embeds `{ deleted, remaining }` and the skill dir survives with the remaining files.
 
-Add to coverage scope in `vitest.config.ts`: `src/lib/skills.ts`, `src/lib/skill-tool.ts`.
+MCP tool (`src/lib/skill-tool.ts`):
+- Each action dispatches correctly (list, view, view_file, create, update, delete).
+- `view_file` rejects symlink / absolute / `..` path with a clear error.
+- `update` with `{}` patch rejected by Zod `refine`.
+
+API (`src/app/api/skills/`):
+- `GET /api/skills` returns index + diagnostics.
+- `POST` / `PATCH` / `DELETE` reject missing / bad `sec-fetch-site` / mismatched `origin` (403) via `requireTrustedRequest()`.
+- `POST` hits the `skills:mutate` rate-limit bucket.
+- `GET /api/skills/[name]/files/[...path]` rejects symlink / escape (403).
+- `POST` returns 409 on name collision; `PATCH`/`DELETE` return 404 on unknown skill.
+
+Add to coverage scope in `vitest.config.ts`: `src/lib/skills.ts`, `src/lib/skill-tool.ts`, `src/app/api/skills/`.
 
 ## 12. Documentation updates
 
@@ -366,19 +451,22 @@ This keeps Dream's write surface conservative and puts skill creation behind exp
 
 Revisit date: **after ~4 weeks of manual skill use in v1**, not sooner.
 
-## 14. Open questions to resolve before coding
+## 14. Resolved design decisions
 
-1. **Frontmatter parser — add `gray-matter` or hand-roll?** Hand-rolled is ~40 lines and zero-dep. `gray-matter` is battle-tested but adds a dependency. Lean hand-rolled unless we hit edge cases.
-2. **Should `edit` with an unknown `name` upsert, or fail?** Spec above says fail. Confirm before implementing — the tool being forgiving here could mask typos.
-3. **Should `delete` cascade supporting files?** Spec above says yes (recursive). Confirm — a user who manually dropped a `notes.md` into the skill dir might be surprised.
-4. **Description length cap — is 280 right?** Tuned from Twitter-intuition, not measurement. After 30-skill dogfooding, reassess. For now: soft warning above 200, hard block above 280.
+1. **Frontmatter parser: `gray-matter`.** Earlier draft said hand-roll; reversed after Codex review. Half-YAML via regex is the worst of both worlds — it looks like YAML so users will try to use YAML features, then silently break. Either commit to real YAML or invent a non-YAML header. Since the precedent and Hermes reference both use YAML frontmatter, use `gray-matter` (which pulls in `js-yaml`) and accept the one-dep cost.
+2. **`update` with an unknown `name`: fail.** Upsert would silently mask typos — the agent thinks it updated `weekly-review` but actually created `weekly-reveiw`. Failure costs one extra tool call; silent upsert costs a drifting duplicate the user never notices. Keep `create` and `update` distinct and unforgiving, matching the `reminder-tool.ts` pattern.
+3. **`delete` cascades supporting files.** A skill directory is a unit: `SKILL.md` + `examples/` + `templates/` are co-authored. Orphaned files are the worse failure mode (stale references, confusing `git status`). The `delete` tool result returns the full list of removed paths (§6.2) so the agent can flag unexpected deletions to the user. On partial failure, the error embeds what was deleted vs. what remains (§6.3). Git covers regret.
+4. **Description length cap: 200 hard, 150 soft-warn.** Tuned against prompt budget, not Twitter. 30 skills × 200 chars ≈ 6.5 KB — comfortable, and the ceiling forces descriptions to be scannable (the whole point of the index). Descriptions that want 280 chars are usually doing the skill body's job.
+5. **Agent keeps write access in v1 (`create` / `update` / `delete`), despite self-modification risk.** Codex flagged this as the biggest risk: one bad tool call silently reshapes later turns. Read-only v1 would eliminate it. Kept anyway because §1's thesis — "the agent discovers them, picks them, reads them, follows them, **and edits them when they're wrong**" — is the whole feature; a read-only v1 is a different, smaller feature whose value is unclear until we've seen the agent try to self-improve. Mitigations: `git-memory.ts`-style auto-commit of skill-dir changes (defer, but lean toward it); the index on every turn is an audit surface; every mutation surfaces in the conversation as a tool call. Revisit after 4 weeks of dogfooding — if skills drift badly, downgrade MCP to `list` + `view` + `view_file` only.
+6. **Body size cap: 32 KB.** Arbitrary-ish, but covers any realistic recipe and prevents a single `view` from blowing the turn budget. Symmetric cap on supporting files. Raise to 64 KB if a legitimate skill hits it; don't raise preemptively.
+7. **Unknown frontmatter fields: silently ignored.** Codex rightly flagged "reject with warning" as meaningless. Forward-compat means ignoring fields; validation means erroring on them. Pick one — went with ignore so unknown fields don't break old skills when we add new ones.
 
 ## 15. Implementation plan (PR breakdown)
 
-1. **PR 1 — Core.** `src/lib/skills.ts`, `src/lib/skill-tool.ts`, wiring in `src/lib/agent.ts`, system-prompt extension in `buildSystemPrompt()`, one seeded skill, unit tests. No UI, no API. Agent can create/view/edit/delete via tool calls.
-2. **PR 2 — API.** `src/app/api/skills/` routes + auth + rate limit. Keeps the feature usable programmatically before the UI lands.
-3. **PR 3 — UI.** `SkillsManager` component + settings wiring + `/skills` slash command + CLAUDE.md updates.
-4. **Dogfood for ~4 weeks** before touching Dream.
-5. **PR 4 (v1.5, gated).** Dream proposals to `.proposals.md` + UI accept/dismiss.
+1. **PR 1 — Core.** `src/lib/skills.ts` (with gray-matter, size caps, symlink rejection, diagnostics), `src/lib/skill-tool.ts`, wiring into `startAgent()` in `src/lib/agent.ts`, system-prompt extension in `buildSystemPrompt()`, one seeded skill, unit tests. No UI, no API. Agent can list/view/view_file/create/update/delete via tool calls.
+2. **PR 2 — API + hardening.** `src/app/api/skills/` routes (`requireTrustedRequest()` on mutations, new `skills:mutate` rate-limit bucket), `GET /api/skills/diagnostics` (or fold into `GET /api/skills` response). Supporting-file read route. Route tests covering 403 (origin / symlink / escape), 404, 409, 413.
+3. **PR 3 — UI + slash command.** `SkillsManager` component, `SettingsPageClient` change to accept `initialSection` and read `?section=` on the server, `/skills` slash command, diagnostics banner in the Skills section, CLAUDE.md updates.
+4. **Dogfood for ~4 weeks.** Watch for: drift from bad agent `update` calls (downgrade to read-only if bad), skill-count inflation, unused skills. Decide before Dream integration whether to auto-commit skill changes via `git-memory.ts`.
+5. **PR 4 (v1.5, gated).** Dream proposals to `.proposals.md` + UI accept/dismiss. Possibly: auto-commit skill changes; possibly: MCP read-only downgrade if drift was a problem.
 
 Each PR is independently landable and leaves the system in a consistent state.

@@ -1,38 +1,87 @@
 "use client";
 
-import { useState, useRef, useEffect, type KeyboardEvent } from "react";
+import { useState, useRef, type KeyboardEvent } from "react";
 import { useChatStream } from "./ChatStreamProvider";
 import { AVAILABLE_MODELS } from "@/lib/models";
+import {
+  parseCommand,
+  getCommandSuggestions,
+  type SlashCommandDef,
+} from "@/lib/slash-commands";
 
 export function ChatInput() {
-  const { sendMessage, cancel, status } = useChatStream();
+  const { sendMessage, cancel, status, modelId, dispatchCommand } =
+    useChatStream();
   const [text, setText] = useState("");
-  const [modelLabel, setModelLabel] = useState("Sonnet 4.6");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isStreaming = status === "streaming";
   const isBusy = status === "streaming" || status === "loading";
+  const modelLabel =
+    AVAILABLE_MODELS.find((m) => m.id === modelId)?.label ?? "Sonnet 4.6";
 
-  useEffect(() => {
-    const ac = new AbortController();
-    fetch("/api/settings/model", { signal: ac.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        const label = AVAILABLE_MODELS.find((m) => m.id === data?.model)?.label;
-        if (label) setModelLabel(label);
-      })
-      .catch(() => {});
-    return () => ac.abort();
-  }, []);
+  const suggestions = getCommandSuggestions(text);
+  const popoverOpen = !dismissed && suggestions.length > 0;
+  const activeIndex = Math.min(selectedIndex, suggestions.length - 1);
 
-  function handleSubmit() {
-    const trimmed = text.trim();
-    if (!trimmed || isBusy) return;
-    sendMessage(trimmed);
+  function clearInput() {
     setText("");
+    setDismissed(false);
+    setSelectedIndex(0);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
+  function acceptSuggestion(cmd: SlashCommandDef) {
+    dispatchCommand(cmd.name);
+    clearInput();
+  }
+
+  function handleSubmit() {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const cmd = parseCommand(trimmed);
+    if (cmd) {
+      dispatchCommand(cmd.name);
+    } else if (!isBusy) {
+      sendMessage(trimmed);
+    } else {
+      return;
+    }
+    clearInput();
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (popoverOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((i) => (i + 1) % suggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex(
+          (i) => (i - 1 + suggestions.length) % suggestions.length,
+        );
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        acceptSuggestion(suggestions[activeIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissed(true);
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        acceptSuggestion(suggestions[activeIndex]);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -49,18 +98,47 @@ export function ChatInput() {
   return (
     <div className="px-4 pb-6 pt-3">
       <div className="mx-auto max-w-2xl">
+        {popoverOpen && (
+          <div
+            role="listbox"
+            className="mb-2 overflow-hidden rounded-2xl border border-border-subtle bg-bg-secondary shadow-[0_10px_30px_-14px_rgba(0,0,0,0.7)]"
+          >
+            {suggestions.map((cmd, i) => (
+              <div
+                key={cmd.name}
+                role="option"
+                aria-selected={i === activeIndex}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  acceptSuggestion(cmd);
+                }}
+                onMouseEnter={() => setSelectedIndex(i)}
+                className={`flex cursor-pointer items-baseline gap-3 px-4 py-2 text-sm ${
+                  i === activeIndex ? "bg-bg-tertiary" : ""
+                }`}
+              >
+                <span className="font-mono text-text-primary">/{cmd.name}</span>
+                <span className="text-xs text-text-muted">
+                  {cmd.description}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="rounded-2xl border border-border-subtle bg-bg-secondary shadow-[0_10px_30px_-14px_rgba(0,0,0,0.7)] transition-colors focus-within:border-border">
           <textarea
             ref={textareaRef}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
+              setSelectedIndex(0);
+              setDismissed(false);
               handleInput();
             }}
             onKeyDown={handleKeyDown}
             placeholder="Reply to Pollux…"
             rows={1}
-            disabled={isBusy}
+            disabled={status === "loading"}
             className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-50"
           />
           <div className="flex items-center justify-between px-3 pb-3 pt-1">

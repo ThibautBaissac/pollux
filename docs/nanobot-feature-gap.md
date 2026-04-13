@@ -31,7 +31,6 @@ Comparison of user-facing features present in [nanobot](../../../ThibautBaissac/
 
 | Feature | What it does | User Impact | Effort |
 |---------|-------------|-------------|--------|
-| **In-chat slash commands** | `/new`, `/stop`, `/status`, `/dream` — quick actions typed directly in the message input | **Med** — faster than navigating menus; power-user productivity boost | **S** — intercept input starting with `/` in `ChatInput`, dispatch client-side or to API |
 | **Token / cost usage display** | Show tokens consumed and estimated cost per message or session, viewable via `/status` | **Med** — essential for budget awareness on a pay-per-token API | **S** — SDK returns usage metadata; store in messages table, render in UI |
 
 ## Extensibility

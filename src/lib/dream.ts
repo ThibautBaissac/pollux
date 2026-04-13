@@ -282,30 +282,51 @@ async function phase2EditMemory(
 // Main entry point
 // ---------------------------------------------------------------------------
 
+export class DreamAlreadyRunningError extends Error {
+  constructor() {
+    super("Dream is already running");
+    this.name = "DreamAlreadyRunningError";
+  }
+}
+
+let isDreamRunning = false;
+
+export function isDreamInProgress(): boolean {
+  return isDreamRunning;
+}
+
 export async function runDream(): Promise<{
   summarized: number;
   edited: boolean;
 }> {
-  const summarized = await phase1Summarize();
-
-  const unprocessed = readHistorySince(getLastDreamCursor());
-  const timeSinceLastPhase2 =
-    Date.now() - readTimestamp(LAST_PHASE2_PATH).getTime();
-  let edited = false;
-
-  if (
-    unprocessed.length > 0 &&
-    (unprocessed.length >= cfg.phase2.minEntries ||
-      timeSinceLastPhase2 >= cfg.phase2.maxDelayMs)
-  ) {
-    edited = await phase2EditMemory(unprocessed);
+  if (isDreamRunning) {
+    throw new DreamAlreadyRunningError();
   }
+  isDreamRunning = true;
+  try {
+    const summarized = await phase1Summarize();
 
-  if (summarized > 0 || edited) {
-    console.log(`Dream: summarized=${summarized}, edited=${edited}`);
+    const unprocessed = readHistorySince(getLastDreamCursor());
+    const timeSinceLastPhase2 =
+      Date.now() - readTimestamp(LAST_PHASE2_PATH).getTime();
+    let edited = false;
+
+    if (
+      unprocessed.length > 0 &&
+      (unprocessed.length >= cfg.phase2.minEntries ||
+        timeSinceLastPhase2 >= cfg.phase2.maxDelayMs)
+    ) {
+      edited = await phase2EditMemory(unprocessed);
+    }
+
+    if (summarized > 0 || edited) {
+      console.log(`Dream: summarized=${summarized}, edited=${edited}`);
+    }
+
+    return { summarized, edited };
+  } finally {
+    isDreamRunning = false;
   }
-
-  return { summarized, edited };
 }
 
 // ---------------------------------------------------------------------------

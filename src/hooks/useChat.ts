@@ -15,9 +15,18 @@ import {
   applyConversationId,
   pruneTrailingEmptyAssistant,
 } from "./useChatStream";
+import { AVAILABLE_MODELS } from "@/lib/models";
+import type { SlashCommandName } from "@/lib/slash-commands";
+
+const RESET_ABORT_REASON = "pollux:reset";
 
 export interface UseChatOptions {
   onConversationCreated?: () => void;
+}
+
+export interface LastResponseCost {
+  costUsd?: number;
+  turns?: number;
 }
 
 export interface UseChatReturn {
@@ -26,10 +35,12 @@ export interface UseChatReturn {
   error: string | null;
   conversationId: string | null;
   title: string | null;
+  modelId: string | null;
   sendMessage: (text: string) => void;
   cancel: () => void;
   loadConversation: (id: string) => Promise<void>;
   reset: () => void;
+  dispatchCommand: (name: SlashCommandName) => void;
 }
 
 async function fetchConversationSnapshot(
@@ -56,6 +67,9 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
   const [error, setError] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [title, setTitle] = useState<string | null>(null);
+  const [modelId, setModelId] = useState<string | null>(null);
+  const lastCostRef = useRef<LastResponseCost | null>(null);
+  const messagesRef = useRef<Message[]>(messages);
   const isMountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadControllerRef = useRef<AbortController | null>(null);
@@ -74,6 +88,21 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
       abortControllerRef.current?.abort();
       loadControllerRef.current?.abort();
     };
+  }, []);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    fetch("/api/settings/model", { signal: ac.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (typeof data?.model === "string") setModelId(data.model);
+      })
+      .catch(() => {});
+    return () => ac.abort();
   }, []);
 
   useEffect(() => {
@@ -118,7 +147,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
   }, []);
 
   const reset = useCallback(() => {
-    abortControllerRef.current?.abort();
+    abortControllerRef.current?.abort(RESET_ABORT_REASON);
     abortControllerRef.current = null;
     invalidatePendingLoad();
     setMessages([]);
@@ -126,6 +155,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     setTitle(null);
     setStatus("idle");
     setError(null);
+    lastCostRef.current = null;
   }, [invalidatePendingLoad]);
 
   const loadConversation = useCallback(async (id: string) => {
@@ -273,6 +303,10 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
                 break;
 
               case "done":
+                lastCostRef.current = {
+                  costUsd: event.costUsd,
+                  turns: event.turns,
+                };
                 setMessages((prev) => pruneTrailingEmptyAssistant(prev));
                 setStatus("idle");
                 break;
@@ -290,6 +324,7 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
         } catch (err: unknown) {
           if (err instanceof Error && err.name === "AbortError") {
             if (!isMountedRef.current) return;
+            if (controller.signal.reason === RESET_ABORT_REASON) return;
 
             const result = await reconcileAfterAbort(
               pendingConversationId,
@@ -348,15 +383,144 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
     abortControllerRef.current = null;
   }, []);
 
+  const pushSystemMessage = useCallback(
+    (content: string): string => {
+      const id = crypto.randomUUID();
+      const msg: Message = {
+        id,
+        conversationId: conversationId ?? "local",
+        role: "system",
+        content,
+        toolUses: null,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant") {
+          return [...prev.slice(0, -1), msg, last];
+        }
+        return [...prev, msg];
+      });
+      return id;
+    },
+    [conversationId],
+  );
+
+  const replaceSystemMessage = useCallback(
+    (id: string, content: string) => {
+      setMessages((prev) => {
+        const idx = prev.findIndex(
+          (m) => m.id === id && m.role === "system",
+        );
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next[idx] = { ...next[idx], content };
+        return next;
+      });
+    },
+    [],
+  );
+
+  const runDreamCommand = useCallback(async () => {
+    const placeholderId = pushSystemMessage("Dreaming…");
+    let message: string;
+    try {
+      const res = await fetch("/api/dream/run", { method: "POST" });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        summarized?: number;
+        edited?: boolean;
+        durationMs?: number;
+      };
+      if (res.status === 409) {
+        message = "Dream is already running.";
+      } else if (!res.ok) {
+        message = body.error ?? `Dream failed (${res.status}).`;
+      } else {
+        const seconds = ((body.durationMs ?? 0) / 1000).toFixed(1);
+        message = `Dream complete · summarized ${body.summarized ?? 0} · ${
+          body.edited ? "memory edited" : "no memory edits"
+        } · ${seconds}s`;
+      }
+    } catch {
+      message = "Dream request failed.";
+    }
+    if (!isMountedRef.current) return;
+    replaceSystemMessage(placeholderId, message);
+  }, [pushSystemMessage, replaceSystemMessage]);
+
+  const dispatchCommand = useCallback(
+    (name: SlashCommandName) => {
+      switch (name) {
+        case "new": {
+          reset();
+          router.push("/chat");
+          return;
+        }
+        case "stop": {
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+          } else {
+            pushSystemMessage("Nothing is streaming.");
+          }
+          return;
+        }
+        case "status": {
+          const label =
+            AVAILABLE_MODELS.find((m) => m.id === modelId)?.label ??
+            modelId ??
+            "unknown";
+          const last = lastCostRef.current;
+          const cost =
+            typeof last?.costUsd === "number"
+              ? `$${last.costUsd.toFixed(4)}`
+              : "n/a";
+          const turns =
+            typeof last?.turns === "number" ? String(last.turns) : "n/a";
+          const visibleMessages = messagesRef.current.filter(
+            (m) => m.role !== "system",
+          ).length;
+          pushSystemMessage(
+            [
+              `Model: ${label}`,
+              `Conversation: ${title ?? "—"} (${conversationId ?? "new"})`,
+              `Messages: ${visibleMessages}`,
+              `Status: ${status}`,
+              `Last response: ${cost} · ${turns} turns`,
+            ].join("\n"),
+          );
+          return;
+        }
+        case "dream": {
+          void runDreamCommand();
+          return;
+        }
+      }
+    },
+    [
+      conversationId,
+      modelId,
+      pushSystemMessage,
+      reset,
+      router,
+      runDreamCommand,
+      status,
+      title,
+    ],
+  );
+
   return {
     messages,
     status,
     error,
     conversationId,
     title,
+    modelId,
     sendMessage,
     cancel,
     loadConversation,
     reset,
+    dispatchCommand,
   };
 }

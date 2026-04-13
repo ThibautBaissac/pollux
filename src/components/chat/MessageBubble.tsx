@@ -71,6 +71,16 @@ export const MessageBubble = memo(function MessageBubble({
   message: Message;
   id?: string;
 }) {
+  if (message.role === "system") {
+    return (
+      <div id={id} className="flex justify-center">
+        <div className="max-w-[80%] whitespace-pre-wrap text-center text-xs italic text-text-muted">
+          {message.content}
+        </div>
+      </div>
+    );
+  }
+
   const isUser = message.role === "user";
 
   if (isUser) {

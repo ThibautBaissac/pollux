@@ -25,6 +25,8 @@ export interface SseToolEvent {
 
 export interface SseDoneEvent {
   type: "done";
+  costUsd?: number;
+  turns?: number;
 }
 
 export interface SseErrorEvent {
@@ -94,7 +96,11 @@ function mapEvent(
     case "tool":
       return { type: "tool", name: data.name as string };
     case "done":
-      return { type: "done" };
+      return {
+        type: "done",
+        costUsd: typeof data.costUsd === "number" ? data.costUsd : undefined,
+        turns: typeof data.turns === "number" ? data.turns : undefined,
+      };
     case "error":
       return { type: "error", message: data.message as string };
     default:

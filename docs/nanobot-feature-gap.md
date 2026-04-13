@@ -18,7 +18,6 @@ Comparison of user-facing features present in [nanobot](../../../ThibautBaissac/
 
 | Feature | What it does | User Impact | Effort |
 |---------|-------------|-------------|--------|
-| **Scheduled reminders (cron)** | User says "remind me to X at 3pm every Friday" — agent schedules it, sends a message when due | **High** — primary daily-assistant use case; Pollux currently has no proactive notifications | **M** — needs a cron store (SQLite table), background scheduler process, and notification delivery via the web app |
 | **Heartbeat background tasks** | Periodic agent runs (e.g. every 30 min) that read a task file and execute recurring work autonomously | **Med** — enables "check my deploys", "summarize RSS feeds" without user prompting | **M** — similar to Dream's scheduler but generalized; needs a `HEARTBEAT.md` equivalent + runner |
 
 ## Configuration

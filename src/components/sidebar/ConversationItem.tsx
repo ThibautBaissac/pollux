@@ -45,7 +45,7 @@ export function ConversationItem({
   }
 
   return (
-    <div className="group relative">
+    <div className={`group relative ${menuOpen ? "z-20" : ""}`}>
       <Link
         href={`/chat/${conversation.id}`}
         onClick={closeSidebar}

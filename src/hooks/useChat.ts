@@ -496,6 +496,10 @@ export function useChat(options?: UseChatOptions): UseChatReturn {
           void runDreamCommand();
           return;
         }
+        case "skills": {
+          router.push("/settings?section=skills");
+          return;
+        }
       }
     },
     [

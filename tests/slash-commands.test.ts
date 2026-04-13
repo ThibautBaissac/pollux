@@ -61,6 +61,7 @@ describe("getCommandSuggestions", () => {
     expect(getCommandSuggestions("/s").map((c) => c.name)).toEqual([
       "stop",
       "status",
+      "skills",
     ]);
     expect(getCommandSuggestions("/sta").map((c) => c.name)).toEqual([
       "status",

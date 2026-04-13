@@ -8,20 +8,12 @@ import { ModelSelect } from "@/components/settings/ModelSelect";
 import { WorkingDirectoryInput } from "@/components/settings/WorkingDirectoryInput";
 import { McpServersEditor } from "@/components/settings/McpServersEditor";
 import { RemindersManager } from "@/components/settings/RemindersManager";
+import { SkillsManager } from "@/components/settings/SkillsManager";
 import { EmailForm } from "@/components/settings/EmailForm";
 import { PasswordForm } from "@/components/settings/PasswordForm";
 import { RecoveryRegenerateForm } from "@/components/settings/RecoveryRegenerateForm";
 import { LogoutAllButton } from "@/components/settings/LogoutAllButton";
-
-type Section =
-  | "memory"
-  | "model"
-  | "working-directory"
-  | "mcp-servers"
-  | "reminders"
-  | "email"
-  | "password"
-  | "security";
+import type { Section } from "@/components/settings/sections";
 
 interface SectionDef {
   key: Section;
@@ -68,6 +60,12 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
         description:
           "Scheduled reminders that deliver messages to conversations when due.",
       },
+      {
+        key: "skills",
+        label: "Skills",
+        description:
+          "Procedural recipes the agent can discover and use.",
+      },
     ],
   },
   {
@@ -96,11 +94,15 @@ const ALL_SECTIONS = GROUPS.flatMap((g) => g.sections);
 
 export function SettingsPageClient({
   initialEmail,
+  initialSection,
 }: {
   initialEmail: string;
+  initialSection?: Section;
 }) {
   const [email, setEmail] = useState(initialEmail);
-  const [activeSection, setActiveSection] = useState<Section>("memory");
+  const [activeSection, setActiveSection] = useState<Section>(
+    initialSection ?? "memory",
+  );
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -120,6 +122,8 @@ export function SettingsPageClient({
         return <McpServersEditor />;
       case "reminders":
         return <RemindersManager />;
+      case "skills":
+        return <SkillsManager />;
       case "email":
         return (
           <div className="space-y-3">

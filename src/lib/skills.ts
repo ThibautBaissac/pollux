@@ -11,12 +11,12 @@ import {
 } from "fs";
 import { isAbsolute, join, normalize, relative, sep } from "path";
 import matter from "gray-matter";
+import { BODY_MAX, DESC_MAX, NAME_REGEX } from "@/lib/skill-constants";
+
+export { BODY_MAX, DESC_MAX, NAME_REGEX };
 
 export const SKILLS_DIR = join(process.cwd(), "data", "skills");
 
-const NAME_REGEX = /^[a-z][a-z0-9-]{1,47}$/;
-const DESC_MAX = 200;
-const BODY_MAX = 32 * 1024;
 const SUPPORTING_FILE_MAX = 32 * 1024;
 const SUPPORTING_FILES_CAP = 100;
 

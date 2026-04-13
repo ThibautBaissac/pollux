@@ -52,6 +52,7 @@ npx vitest run -t "test name pattern"
   - `notifications/` — Execution log (reminder fires, dream runs) + read-state
   - `dream/run` — Manual trigger for Dream memory consolidation
   - `settings/` — Model selection, working directory, MCP server configuration
+  - `skills/` — CRUD for procedural skills and reads of supporting files
 - `src/lib/` — Server-side logic:
   - `agent.ts` — SDK config, system prompt, tool list, subagent definitions
   - `chat.ts` — Shared chat primitives: conversation resolution, message persistence, used by both `/api/chat` and `scheduled-agent.ts`
@@ -63,6 +64,9 @@ npx vitest run -t "test name pattern"
   - `model-store.ts` / `cwd-store.ts` / `mcp-store.ts` / `models.ts` — User settings persistence + model catalog
   - `reminder-tool.ts` — Built-in MCP server exposing reminder add/list/remove to the agent
   - `reminders.ts` — Reminder business logic (CRUD, cron parsing, scheduling, running-state tracking)
+  - `skills.ts` — Skill CRUD business logic (gray-matter frontmatter, size caps, symlink rejection, diagnostics)
+  - `skill-tool.ts` — Built-in MCP server exposing the skill tool (`list`, `view`, `view_file`, `create`, `update`, `delete`) to the agent
+  - `skill-http.ts` — Shared HTTP error mapping for the `/api/skills` routes
   - `scheduled-agent.ts` — Runs agent-mode reminders autonomously (no user in the loop) and records executions
   - `executions.ts` — Log of fired reminders/dream runs; backs the notifications UI
   - `rate-limit.ts` / `rate-limit-config.ts` — Per-route request throttling
@@ -90,12 +94,12 @@ npx vitest run -t "test name pattern"
 - **Tool-only frame merging:** Frames with only tool use (no text) are deferred and merged into the next text-containing frame to avoid empty message rows.
 - **Dream system:** Background process runs every 10 minutes (also triggerable via `/dream` slash command or `POST /api/dream/run`). Phase 1 summarizes recent conversations into `history.jsonl`. Phase 2 (triggered by entry count or time threshold) uses the agent to analyze history and edit memory files, then commits changes via git.
 - **MCP servers:** User-configured MCP servers (stdio/http/sse) are merged with the built-in `pollux-reminders` server and passed to the SDK on every chat request. Config stored in `data/mcp-servers.json`.
-- **Slash commands:** `/new`, `/stop`, `/status`, `/dream` are parsed in `ChatInput` via `slash-commands.ts` and handled client-side — they never hit the chat API.
+- **Slash commands:** `/new`, `/stop`, `/status`, `/dream`, `/skills` are parsed in `ChatInput` via `slash-commands.ts` and handled client-side — they never hit the chat API.
 - **Reminder kinds:** `notify` reminders just log an execution and surface a notification; `agent` reminders run the SDK autonomously via `scheduled-agent.ts`, persist their conversation turn, and clear a `runningSince` flag on completion. Both record an entry in the `executions` table.
 
 ### Agent capabilities
 
-The agent has 8 tools: WebSearch, WebFetch, Read, Write, Edit, Glob, Grep, Bash. Two subagents are available for delegation: `researcher` (web + file reading) and `coder` (file editing + shell). Reminders are exposed via a built-in MCP server. Extended thinking is enabled (adaptive mode), max 15 tool-use turns per request.
+The agent has 8 tools: WebSearch, WebFetch, Read, Write, Edit, Glob, Grep, Bash. Two subagents are available for delegation: `researcher` (web + file reading) and `coder` (file editing + shell). Reminders are exposed via a built-in MCP server. Skills are exposed via a built-in `pollux-skills` MCP server — the agent scans an indexed name+description list on every turn and loads full skill content on demand via the `skill` tool. Extended thinking is enabled (adaptive mode), max 15 tool-use turns per request.
 
 ### Database
 
@@ -110,6 +114,14 @@ Three markdown files in `data/memory/`:
 
 All three are concatenated and injected into the system prompt on every chat request. The Dream system automatically maintains profile and knowledge from conversation content. Files are also editable via `/settings` UI and the `/api/memory` endpoint.
 
+### Skills system
+
+Procedural recipes stored as markdown files in `data/skills/<name>/SKILL.md` with YAML frontmatter (`name`, `description`, `tags`) parsed by `gray-matter`. One directory per skill; supporting files (`examples/`, `templates/`, etc.) live alongside `SKILL.md` and are reachable only through the `pollux-skills` MCP tool (`view_file` action) — they are not on the agent's working-directory filesystem.
+
+The system prompt gets a Skills block with one `name — description` line per valid skill. Full bodies load lazily when the agent calls the `skill` tool with `action='view'`. Skills can be created, updated, and deleted by the agent (same tool) or via the `/api/skills` REST endpoints from the settings UI (`/settings?section=skills`, or the `/skills` slash command). Invalid skill dirs (bad frontmatter, name ≠ dirname, oversized body, symlinked `SKILL.md`) surface via `readSkillDiagnostics()` and render as a banner in the Skills section.
+
+Size caps enforced in `src/lib/skills.ts`: 32 KB per body, 32 KB per supporting-file read, 100 supporting files per skill. Soft warning in the UI above 30 skills (inflates every prompt). Symlinks are rejected at both load time and supporting-file read time.
+
 ### Config
 
 - `next.config.ts` externalizes `better-sqlite3` and `@anthropic-ai/claude-agent-sdk` from bundling
@@ -123,10 +135,10 @@ All three are concatenated and injected into the system prompt on every chat req
 
 Auth endpoints at `/api/auth/`: `check`, `setup`, `login`, `logout`, `logout-all`, `profile`, `change-password`, `change-email`, `recover`, `regenerate-recovery`.
 
-Setup requires email + password and generates 8 scrypt-hashed recovery codes (shown once). Recovery codes enable offline password reset from `/recover` without SMTP. Settings page at `/settings` for changing email, password, regenerating codes, model selection, MCP servers, working directory, memory editing, and reminders management.
+Setup requires email + password and generates 8 scrypt-hashed recovery codes (shown once). Recovery codes enable offline password reset from `/recover` without SMTP. Settings page at `/settings` for changing email, password, regenerating codes, model selection, MCP servers, working directory, memory editing, reminders management, and skills management. Deep-link via `?section=<key>` (e.g. `/settings?section=skills`).
 
 ## Testing
 
 Tests live in `tests/*.test.ts`. File-backed tests mock `process.cwd()` and use temporary directories so they do not mutate the real `data/` tree. Test helpers in `tests/helpers/` provide mock cookies, request builders, and an in-memory test database.
 
-Coverage scope (see `vitest.config.ts`) includes API routes (`auth`, `chat`, `conversations`, `memory`, `notifications`), hooks (`useChatStream`), and lib modules (`agent`, `auth`, `auth-guard`, `chat`, `memory`, `models`, `rate-limit`, `reminders`, `request-guards`, `scheduled-agent`, `slash-commands`, `cwd-store`, `mcp-store`).
+Coverage scope (see `vitest.config.ts`) includes API routes (`auth`, `chat`, `conversations`, `memory`, `notifications`, `skills`), hooks (`useChatStream`), and lib modules (`auth`, `auth-guard`, `chat`, `memory`, `rate-limit`, `rate-limit-config`, `request-guards`, `cwd-store`, `mcp-store`, `executions`, `skills`, `skill-tool`, `skill-http`).

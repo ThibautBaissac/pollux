@@ -1,4 +1,4 @@
-export type SlashCommandName = "new" | "stop" | "status" | "dream";
+export type SlashCommandName = "new" | "stop" | "status" | "dream" | "skills";
 
 export interface SlashCommand {
   name: SlashCommandName;
@@ -14,6 +14,7 @@ export const COMMAND_DEFS: readonly SlashCommandDef[] = [
   { name: "stop", description: "Stop the current response" },
   { name: "status", description: "Show model, conversation, and last cost" },
   { name: "dream", description: "Run memory consolidation now" },
+  { name: "skills", description: "Open the skills manager" },
 ];
 
 export const COMMANDS: SlashCommandName[] = COMMAND_DEFS.map((c) => c.name);

@@ -10,6 +10,7 @@ import {
   type HistoryEntry,
 } from "./memory";
 import { gitCommitMemory } from "./git-memory";
+import { recordExecution } from "./executions";
 import { db } from "./db";
 import { conversations, messages as messagesTable } from "./db/schema";
 import { eq, gt } from "drizzle-orm";
@@ -268,6 +269,11 @@ async function phase2EditMemory(
   compactHistory(newCursor);
 
   await gitCommitMemory(batch[batch.length - 1].timestamp);
+
+  recordExecution({
+    kind: "dream",
+    summary: `Memory updated (${batch.length} ${batch.length === 1 ? "entry" : "entries"})`,
+  });
 
   return true;
 }

@@ -66,14 +66,16 @@ function formatToolLabel(tool: ToolUse): string {
 
 export const MessageBubble = memo(function MessageBubble({
   message,
+  id,
 }: {
   message: Message;
+  id?: string;
 }) {
   const isUser = message.role === "user";
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
+      <div id={id} className="flex justify-end">
         <div className="max-w-[80%] rounded-3xl px-5 py-3 text-sm text-text-primary" style={{ backgroundColor: "#2e2e2e" }}>
           <p className="whitespace-pre-wrap leading-[1.65]">{message.content}</p>
         </div>
@@ -82,7 +84,7 @@ export const MessageBubble = memo(function MessageBubble({
   }
 
   return (
-    <div className="w-full">
+    <div id={id} className="w-full">
       {message.content ? (
         <div className="prose prose-invert max-w-none text-sm prose-p:my-2 prose-p:leading-[1.75] prose-li:leading-[1.75] prose-pre:bg-bg-tertiary prose-pre:border prose-pre:border-border-subtle prose-code:text-text-primary prose-code:before:content-none prose-code:after:content-none prose-headings:text-text-primary prose-headings:font-semibold prose-strong:text-text-primary prose-a:text-accent prose-ul:my-2 prose-ol:my-2">
           <ReactMarkdown

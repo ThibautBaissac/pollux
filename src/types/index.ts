@@ -24,6 +24,19 @@ export interface ConversationWithMessages extends Conversation {
 
 export type StreamStatus = "idle" | "loading" | "streaming" | "error";
 
+export type ExecutionKind = "reminder_notify" | "reminder_agent" | "dream";
+
+export interface Execution {
+  id: string;
+  kind: ExecutionKind;
+  sourceId: string | null;
+  summary: string;
+  conversationId: string | null;
+  messageId: string | null;
+  firedAt: string;
+  readAt: string | null;
+}
+
 export interface Reminder {
   id: string;
   name: string;

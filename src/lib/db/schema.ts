@@ -38,6 +38,21 @@ export const recoveryCodes = sqliteTable("recovery_codes", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+export const executions = sqliteTable("executions", {
+  id: text("id").primaryKey(),
+  kind: text("kind", {
+    enum: ["reminder_notify", "reminder_agent", "dream"],
+  }).notNull(),
+  sourceId: text("source_id"),
+  firedAt: integer("fired_at", { mode: "timestamp" }).notNull(),
+  summary: text("summary").notNull(),
+  conversationId: text("conversation_id").references(() => conversations.id, {
+    onDelete: "cascade",
+  }),
+  messageId: text("message_id"),
+  readAt: integer("read_at", { mode: "timestamp" }),
+});
+
 export const reminders = sqliteTable("reminders", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

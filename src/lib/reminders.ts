@@ -1,7 +1,13 @@
 import { db } from "@/lib/db";
-import { conversations, messages, reminders } from "@/lib/db/schema";
+import {
+  conversations,
+  executions,
+  messages,
+  reminders,
+} from "@/lib/db/schema";
 import { eq, and, lte, asc, isNull, lt, sql, inArray } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
+import { trimExecutions } from "@/lib/executions";
 import type { Reminder } from "@/types";
 
 const STALE_RUN_MS = 10 * 60 * 1000;
@@ -310,6 +316,7 @@ export function checkDueReminders(): void {
   );
 
   const agentRuns: typeof due = [];
+  let notifyFired = false;
 
   db.transaction((tx) => {
     for (const reminder of due) {
@@ -341,9 +348,10 @@ export function checkDueReminders(): void {
         continue;
       }
 
+      const messageId = crypto.randomUUID();
       tx.insert(messages)
         .values({
-          id: crypto.randomUUID(),
+          id: messageId,
           conversationId: reminder.conversationId,
           role: "assistant",
           content: `⏰ **Reminder:** ${reminder.message}`,
@@ -355,6 +363,20 @@ export function checkDueReminders(): void {
         .set({ updatedAt: now })
         .where(eq(conversations.id, reminder.conversationId))
         .run();
+
+      tx.insert(executions)
+        .values({
+          id: crypto.randomUUID(),
+          kind: "reminder_notify",
+          sourceId: reminder.id,
+          summary: reminder.name,
+          conversationId: reminder.conversationId,
+          messageId,
+          firedAt: now,
+          readAt: null,
+        })
+        .run();
+      notifyFired = true;
 
       if (reminder.scheduleType === "recurring" && reminder.cronExpr) {
         const nextRun = computeNextRun(reminder.cronExpr, reminder.timezone);
@@ -370,6 +392,8 @@ export function checkDueReminders(): void {
       }
     }
   });
+
+  if (notifyFired) trimExecutions();
 
   // IMPORTANT: agent runs kick off AFTER the transaction commits.
   // Never await or call runScheduledAgent inside the tx callback —

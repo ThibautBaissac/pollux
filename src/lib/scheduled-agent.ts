@@ -9,6 +9,7 @@ import {
   persistAssistantMessage,
 } from "@/lib/chat";
 import { clearRunningFlag } from "@/lib/reminders";
+import { recordExecution } from "@/lib/executions";
 import type { Reminder, ToolUse } from "@/types";
 
 const RUN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -40,6 +41,8 @@ export async function runScheduledAgent(reminder: Reminder): Promise<void> {
 
   let pendingToolUses: ToolUse[] = [];
   let sawAssistantText = false;
+  let lastMessageId: string | null = null;
+  let sawResult = false;
 
   try {
     const agentStream = startAgent({
@@ -80,7 +83,7 @@ export async function runScheduledAgent(reminder: Reminder): Promise<void> {
             pendingToolUses.length > 0
               ? [...pendingToolUses, ...toolUses]
               : toolUses;
-          persistAssistantMessage(
+          lastMessageId = persistAssistantMessage(
             convId,
             fullText,
             allToolUses.length > 0 ? allToolUses : null,
@@ -91,6 +94,7 @@ export async function runScheduledAgent(reminder: Reminder): Promise<void> {
           pendingToolUses.push(...toolUses);
         }
       } else if (msg.type === "result") {
+        sawResult = true;
         console.log({
           event: "veille_done",
           reminderId: reminder.id,
@@ -101,11 +105,21 @@ export async function runScheduledAgent(reminder: Reminder): Promise<void> {
     }
 
     if (!sawAssistantText && pendingToolUses.length === 0) {
-      persistAssistantMessage(
+      lastMessageId = persistAssistantMessage(
         convId,
         "⚠️ Veille produced no output.",
         null,
       );
+    }
+
+    if (sawResult && !abortController.signal.aborted) {
+      recordExecution({
+        kind: "reminder_agent",
+        sourceId: reminder.id,
+        summary: reminder.name,
+        conversationId: convId,
+        messageId: lastMessageId,
+      });
     }
   } catch (err: unknown) {
     const reason = err instanceof Error ? err.message : String(err);

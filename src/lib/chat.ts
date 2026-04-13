@@ -82,11 +82,12 @@ export function persistAssistantMessage(
   convId: string,
   content: string,
   toolUses: ToolUse[] | null,
-): void {
+): string {
   const now = new Date();
+  const id = crypto.randomUUID();
   db.insert(messages)
     .values({
-      id: crypto.randomUUID(),
+      id,
       conversationId: convId,
       role: "assistant",
       content,
@@ -99,6 +100,7 @@ export function persistAssistantMessage(
     .set({ updatedAt: now })
     .where(eq(conversations.id, convId))
     .run();
+  return id;
 }
 
 // ---------------------------------------------------------------------------

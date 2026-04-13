@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { ConversationItem } from "./ConversationItem";
 import { useSidebar } from "./SidebarContext";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import type { Conversation } from "@/types";
 
 export function Sidebar({
@@ -94,6 +95,7 @@ export function Sidebar({
           <circle cx="16" cy="16" r="2.2" fill="#dbeafe" opacity="0.9" />
         </svg>
         <span className="flex-1 text-base font-semibold text-text-primary">Pollux</span>
+        <NotificationBell />
         {/* Mobile close button */}
         <button
           onClick={close}

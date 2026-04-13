@@ -29,6 +29,8 @@ export default defineConfig({
         "src/lib/request-guards.ts",
         "src/lib/cwd-store.ts",
         "src/lib/mcp-store.ts",
+        "src/lib/executions.ts",
+        "src/app/api/notifications/**/*.ts",
       ],
     },
   },

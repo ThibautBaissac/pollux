@@ -4,6 +4,8 @@ A local-first personal AI assistant powered by the Claude Agent SDK. Single-user
 
 All data stays on your machine: conversations and auth live in a local SQLite database, and the knowledge base is a set of plain markdown files you can edit directly.
 
+![Pollux](screenshot.png)
+
 ## Prerequisites
 
 - Node.js 20+

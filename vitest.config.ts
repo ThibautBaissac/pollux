@@ -30,6 +30,8 @@ export default defineConfig({
         "src/lib/cwd-store.ts",
         "src/lib/mcp-store.ts",
         "src/lib/executions.ts",
+        "src/lib/skills.ts",
+        "src/lib/skill-tool.ts",
         "src/app/api/notifications/**/*.ts",
       ],
     },

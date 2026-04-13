@@ -23,6 +23,14 @@ describe("agent", () => {
       REMINDER_MCP_TOOL_NAME: "reminder",
       reminderMcpServer: { name: "pollux-reminders" },
     }));
+    vi.doMock("@/lib/skill-tool", () => ({
+      SKILL_MCP_SERVER_NAME: "pollux-skills",
+      SKILL_MCP_TOOL_NAME: "skill",
+      skillMcpServer: { name: "pollux-skills" },
+    }));
+    vi.doMock("@/lib/skills", () => ({
+      readSkillIndex: () => [],
+    }));
 
     const { startAgent } = await import("@/lib/agent");
 
@@ -44,9 +52,11 @@ describe("agent", () => {
           allowedTools: expect.arrayContaining([
             "WebSearch",
             "mcp__pollux-reminders__reminder",
+            "mcp__pollux-skills__skill",
           ]),
           mcpServers: expect.objectContaining({
             "pollux-reminders": expect.any(Object),
+            "pollux-skills": expect.any(Object),
           }),
         }),
       }),

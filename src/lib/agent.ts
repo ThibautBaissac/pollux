@@ -6,6 +6,12 @@ import {
   REMINDER_MCP_TOOL_NAME,
   reminderMcpServer,
 } from "@/lib/reminder-tool";
+import {
+  SKILL_MCP_SERVER_NAME,
+  SKILL_MCP_TOOL_NAME,
+  skillMcpServer,
+} from "@/lib/skill-tool";
+import { readSkillIndex, type SkillIndexEntry } from "@/lib/skills";
 
 const ALLOWED_TOOLS: string[] = [
   "WebSearch",
@@ -19,6 +25,22 @@ const ALLOWED_TOOLS: string[] = [
 ];
 
 const REMINDER_ALLOWED_TOOL = `mcp__${REMINDER_MCP_SERVER_NAME}__${REMINDER_MCP_TOOL_NAME}`;
+const SKILL_ALLOWED_TOOL = `mcp__${SKILL_MCP_SERVER_NAME}__${SKILL_MCP_TOOL_NAME}`;
+
+function renderSkillsBlock(skillIndex: SkillIndexEntry[]): string {
+  if (skillIndex.length === 0) return "";
+  const lines = skillIndex.map((s) => {
+    const desc = s.description.replace(/[\r\n]+/g, " ").trim();
+    return `- ${s.name} — ${desc}`;
+  });
+  return `## Skills
+You have procedural skills available. Each is a named how-to for a specific kind of task.
+Before replying, scan this list. If a skill matches or is partially relevant to the request, call the \`skill\` tool with action='view' to load its full instructions, then follow them. If a skill has supporting examples or templates, fetch them with action='view_file'. If a skill is missing a step or is wrong, fix it with action='update' — this is how skills improve.
+
+${lines.join("\n")}
+
+`;
+}
 
 function buildUserPrompt(userMessage: string, conversationId?: string): string {
   if (!conversationId) return userMessage;
@@ -50,11 +72,12 @@ const AGENTS = {
 
 export function buildSystemPrompt(
   memoryContent: string,
+  skillIndex: SkillIndexEntry[],
   cwd: string,
 ): string {
   return `${memoryContent}
 
-## Available tools
+${renderSkillsBlock(skillIndex)}## Available tools
 
 ### Web
 - WebSearch: Search the web for current information
@@ -114,9 +137,11 @@ export function startAgent(params: {
   abortController: AbortController;
 }) {
   const cwd = getCwd();
+  const skillIndex = readSkillIndex();
   const userMcpServers = getMcpServers();
   const mcpServers = {
     [REMINDER_MCP_SERVER_NAME]: reminderMcpServer,
+    [SKILL_MCP_SERVER_NAME]: skillMcpServer,
     ...userMcpServers,
   };
 
@@ -124,9 +149,9 @@ export function startAgent(params: {
     prompt: buildUserPrompt(params.userMessage, params.conversationId),
     options: {
       model: params.model,
-      systemPrompt: buildSystemPrompt(params.memoryContent, cwd),
+      systemPrompt: buildSystemPrompt(params.memoryContent, skillIndex, cwd),
       resume: params.sdkSessionId,
-      allowedTools: [...ALLOWED_TOOLS, REMINDER_ALLOWED_TOOL],
+      allowedTools: [...ALLOWED_TOOLS, REMINDER_ALLOWED_TOOL, SKILL_ALLOWED_TOOL],
       agents: AGENTS,
       permissionMode: "dontAsk",
       includePartialMessages: true,
